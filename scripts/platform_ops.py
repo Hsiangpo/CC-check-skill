@@ -524,6 +524,150 @@ def flush_dns_cache() -> None:
         run_shell("Clear-DnsClientCache")
 
 
+SAFE_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"]
+
+
+def set_static_dns() -> list[str]:
+    """跨平台设置 DHCP 不可覆盖的静态 DNS。
+
+    macOS:  networksetup 手动 DNS + scutil 覆盖 DHCP resolver
+    Linux:  nmcli connection 锁定 DNS + ignore-auto-dns
+    Windows: netsh 设置静态 DNS（不受 DHCP 影响）
+
+    Returns:
+        操作日志列表。
+    """
+    actions: list[str] = []
+
+    if PLATFORM == "darwin":
+        actions.extend(_set_static_dns_darwin())
+    elif PLATFORM == "linux":
+        actions.extend(_set_static_dns_linux())
+    elif PLATFORM == "win32":
+        actions.extend(_set_static_dns_windows())
+
+    flush_dns_cache()
+    actions.append("Flushed DNS cache")
+    return actions
+
+
+def _set_static_dns_darwin() -> list[str]:
+    """macOS: 三层静态 DNS 防护。"""
+    actions: list[str] = []
+
+    # Layer 1: networksetup 手动 DNS（优先于 DHCP）
+    r = run_shell("networksetup -listallnetworkservices")
+    services = [
+        s.strip().lstrip("*").strip()
+        for s in r.stdout.splitlines()[1:]
+        if s.strip() and not s.strip().startswith("*")
+    ]
+
+    for svc in services:
+        dns_str = " ".join(SAFE_DNS_SERVERS)
+        run_shell(f'networksetup -setdnsservers "{svc}" {dns_str}')
+        actions.append(f"Set manual DNS on {svc}: {dns_str}")
+
+    # Layer 2: scutil 直接覆盖 resolver（最强，DHCP 无法覆盖）
+    resolver_dir = Path("/etc/resolver")
+    if not resolver_dir.exists():
+        run_shell("sudo mkdir -p /etc/resolver")
+    # 默认 resolver 文件 - 所有未匹配的域名都走安全 DNS
+    resolver_content = "\n".join(
+        [f"nameserver {dns}" for dns in SAFE_DNS_SERVERS]
+    ) + "\n"
+    # 写入 /etc/resolver/default 需要 sudo
+    # 改用 scutil 设置 DNS 配置（不需要写 /etc/resolver）
+    scutil_script = (
+        "d.init\n"
+        "d.add ServerAddresses * " + " ".join(SAFE_DNS_SERVERS) + "\n"
+        "d.add SearchDomains * local\n"
+        "set State:/Network/Service/StaticDNS/DNS\n"
+        "quit\n"
+    )
+    tmp_scutil = Path("/tmp/cc-check-scutil-dns.txt")
+    tmp_scutil.write_text(scutil_script, encoding="utf-8")
+    run_shell(f"sudo scutil < {tmp_scutil}")
+    tmp_scutil.unlink(missing_ok=True)
+    actions.append("Set scutil State:/Network/Service/StaticDNS/DNS")
+
+    return actions
+
+
+def _set_static_dns_linux() -> list[str]:
+    """Linux: nmcli 锁定 DNS + ignore-auto-dns。"""
+    actions: list[str] = []
+
+    # 检测活跃的 NetworkManager 连接
+    r = run_shell("nmcli -t -f NAME,TYPE,DEVICE connection show --active 2>/dev/null")
+    if r.returncode != 0:
+        # Fallback: 直接写 resolved.conf
+        resolved_conf = Path("/etc/systemd/resolved.conf")
+        if resolved_conf.exists():
+            text = resolved_conf.read_text(errors="ignore")
+            dns_line = f"DNS={' '.join(SAFE_DNS_SERVERS)}"
+            if "[Resolve]" in text:
+                # Replace or add DNS line
+                import re as _re
+                if _re.search(r"^DNS=", text, _re.MULTILINE):
+                    text = _re.sub(r"^DNS=.*$", dns_line, text, flags=_re.MULTILINE)
+                else:
+                    text = text.replace("[Resolve]", f"[Resolve]\n{dns_line}")
+            else:
+                text += f"\n[Resolve]\n{dns_line}\n"
+            run_shell(f"echo '{text}' | sudo tee /etc/systemd/resolved.conf > /dev/null")
+            run_shell("sudo systemctl restart systemd-resolved 2>/dev/null || true")
+            actions.append(f"Set resolved.conf DNS: {dns_line}")
+        return actions
+
+    connections = []
+    for line in r.stdout.strip().splitlines():
+        parts = line.split(":")
+        if len(parts) >= 3 and parts[2]:  # has active device
+            connections.append(parts[0])
+
+    dns_str = " ".join(SAFE_DNS_SERVERS)
+    for conn in connections:
+        # 设置静态 DNS
+        run_shell(f'nmcli connection modify "{conn}" ipv4.dns "{dns_str}"')
+        # 关键：ignore-auto-dns 阻止 DHCP 覆盖
+        run_shell(f'nmcli connection modify "{conn}" ipv4.ignore-auto-dns yes')
+        # 应用修改
+        run_shell(f'nmcli connection up "{conn}" 2>/dev/null || true')
+        actions.append(f"Locked DNS on {conn}: {dns_str} (ignore-auto-dns=yes)")
+
+    return actions
+
+
+def _set_static_dns_windows() -> list[str]:
+    """Windows: netsh 设置静态 DNS（不受 DHCP 影响）。"""
+    actions: list[str] = []
+
+    # 获取活跃的网络适配器
+    r = run_shell(
+        'Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | '
+        'Select-Object -ExpandProperty Name'
+    )
+    if r.returncode != 0:
+        return ["Failed to enumerate network adapters"]
+
+    adapters = [a.strip() for a in r.stdout.strip().splitlines() if a.strip()]
+    for adapter in adapters:
+        # netsh 设置静态 DNS（优先级高于 DHCP）
+        primary = SAFE_DNS_SERVERS[0]
+        secondary = SAFE_DNS_SERVERS[1] if len(SAFE_DNS_SERVERS) > 1 else ""
+        run_shell(
+            f'netsh interface ip set dns name="{adapter}" static {primary} primary'
+        )
+        if secondary:
+            run_shell(
+                f'netsh interface ip add dns name="{adapter}" {secondary} index=2'
+            )
+        actions.append(f"Set static DNS on {adapter}: {', '.join(SAFE_DNS_SERVERS)}")
+
+    return actions
+
+
 # ---------------------------------------------------------------------------
 # Network & Proxy
 # ---------------------------------------------------------------------------

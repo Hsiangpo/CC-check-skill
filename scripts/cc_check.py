@@ -928,16 +928,14 @@ def fix_local(ctx: Context, findings: list[Finding] | None = None) -> list[str]:
         for f in findings
     )
     if dns_needs_fix:
-        dns_map = plat.get_dns_servers()
-        for svc, servers in dns_map.items():
-            if any(s in plat.SUSPICIOUS_DNS for s in servers):
-                if ctx.dry_run:
-                    actions.append(f"[DRY RUN] Would set safe DNS for {svc}")
-                else:
-                    plat.clear_dns_for_service(svc)
-                    actions.append(f"Set safe DNS for {svc}")
+        if ctx.dry_run:
+            actions.append("[DRY RUN] Would set DHCP-resistant static DNS (cross-platform)")
+        else:
+            # Root-cause fix: set_static_dns() locks DNS against DHCP override
+            static_actions = plat.set_static_dns()
+            actions.extend(static_actions)
 
-    # DNS watchdog — install on fail, warn, or missing
+    # DNS watchdog — backup layer (auto-corrects if DHCP still overrides)
     watchdog_needed = plat.PLATFORM == "darwin" and ctx.clash_dir and (
         dns_needs_fix or
         any(f.key == "dns-cleanup-watchdog" and f.status != "pass" for f in findings)

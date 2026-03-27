@@ -42,4 +42,4 @@ jobs:
           python-version: "3.12"
 
       - name: Syntax check
-        run: python -m py_compile scripts/cc_check.py scripts/platform_ops.py scripts/ip_quality.py scripts/scoring.py scripts/vpn_adapter.py
+        run: python -m py_compile scripts/cc_check.py scripts/platform_ops.py scripts/ip_quality.py scripts/scoring.py scripts/vpn_adapter.py scripts/browser_leaks.py

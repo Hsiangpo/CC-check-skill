@@ -30,6 +30,7 @@ from ip_quality import assess_ip_quality
 from scoring import compute_score, format_score_report
 import platform_ops as plat
 import vpn_adapter as vpnops
+import browser_leaks as bleaks
 
 
 # ---------------------------------------------------------------------------
@@ -959,6 +960,9 @@ def main() -> int:
 
     history_sp = sub.add_parser("history", help="Show score history and trends")
 
+    bl_sp = sub.add_parser("browser-leaks", help="Run browser leak tests")
+    bl_sp.add_argument("--json", action="store_true", help="Output as JSON")
+
     dns_sp = sub.add_parser("fix-system-dns-display")
     dns_sp.add_argument("--quiet", action="store_true")
     dns_sp.add_argument("--dry-run", action="store_true")
@@ -969,6 +973,14 @@ def main() -> int:
     try:
         if args.command == "history":
             print(format_history())
+            return 0
+
+        if args.command == "browser-leaks":
+            findings = bleaks.run_python_checks()
+            if getattr(args, "json", False):
+                print(json.dumps([{"test": f.test, "key": f.key, "status": f.status, "summary": f.summary, "details": f.details} for f in findings], ensure_ascii=False, indent=2))
+            else:
+                bleaks.print_browser_report(findings, browser_available=False)
             return 0
 
         if args.command == "inspect":

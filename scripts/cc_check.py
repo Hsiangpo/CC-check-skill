@@ -444,9 +444,13 @@ def inspect_system(ctx: Context, targets: dict[str, str | None]) -> list[Finding
 
     # Input method
     ims = plat.get_active_input_methods()
-    has_chinese = any("SCIM" in im or "ITABC" in im or "Pinyin" in im or "Chinese" in im for im in ims)
-    if has_chinese:
+    china_ime_keywords = ("SCIM", "ITABC", "Pinyin", "Chinese", "Wubi", "Shuangpin", "Zhuyin")
+    has_chinese = any(any(kw.lower() in im.lower() for kw in china_ime_keywords) for im in ims)
+    has_rime = any("rime" in im.lower() for im in ims)
+    if has_chinese and not has_rime:
         findings.append(Finding("system", "input-method", "warn", f"Chinese IME active: {ims[0] if ims else '?'}"))
+    elif has_rime:
+        findings.append(Finding("system", "input-method", "pass", f"Input method: RIME (stealth Chinese IME)"))
     else:
         findings.append(Finding("system", "input-method", "pass", f"Input method: {ims[0] if ims else 'default'}"))
 
@@ -892,6 +896,26 @@ def fix_local(ctx: Context, findings: list[Finding] | None = None) -> list[str]:
                 if modified != text:
                     profile_path.write_text(modified)
             actions.append("Removed brew China mirror env vars from shell profiles")
+
+    # Shell history: surgically remove only China domain lines
+    if any(f.key == "shell-history" and f.status in ("fail", "warn") for f in findings):
+        if ctx.dry_run:
+            preview = plat.clean_shell_history(dry_run=True)
+            for path, count in preview.items():
+                actions.append(f"[DRY RUN] Would remove {count} China-domain lines from {path}")
+        else:
+            removed = plat.clean_shell_history(dry_run=False)
+            for path, count in removed.items():
+                actions.append(f"Removed {count} China-domain lines from {path} (backup: {path}.bak)")
+
+    # Input method: advise on RIME/Squirrel if Chinese IME detected
+    if any(f.key == "input-method" and f.status == "warn" for f in findings):
+        actions.append(
+            "💡 Input method tip: Install RIME/Squirrel (鼠须管) — "
+            "same Pinyin experience, but bundle ID 'im.rime.inputmethod.Squirrel' "
+            "does not contain 'Pinyin' or 'Chinese' keywords. "
+            "Install: brew install --cask squirrel"
+        )
 
     return actions or ["No local repairs needed"]
 

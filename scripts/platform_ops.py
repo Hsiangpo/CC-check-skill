@@ -702,6 +702,54 @@ def scan_shell_history() -> dict[str, int]:
     return hits
 
 
+def clean_shell_history(dry_run: bool = False) -> dict[str, int]:
+    """精准删除 shell 历史中含中国域名的行，保留其他所有历史。
+
+    Returns:
+        dict: {history_file: removed_count}
+    """
+    removed: dict[str, int] = {}
+    if PLATFORM == "win32":
+        return removed
+
+    history_files = []
+    for name in [".zsh_history", ".bash_history", ".local/share/fish/fish_history"]:
+        path = Path.home() / name
+        if path.exists():
+            history_files.append(path)
+
+    keywords_lower = [k.lower() for k in CHINA_DOMAIN_KEYWORDS]
+
+    for path in history_files:
+        try:
+            lines = path.read_text(errors="ignore").splitlines(keepends=True)
+        except Exception:
+            continue
+
+        clean_lines = []
+        removed_count = 0
+        for line in lines:
+            lower = line.lower()
+            if any(kw in lower for kw in keywords_lower):
+                removed_count += 1
+            else:
+                clean_lines.append(line)
+
+        if removed_count > 0:
+            removed[str(path)] = removed_count
+            if not dry_run:
+                # Backup before modifying
+                backup = path.with_suffix(path.suffix + ".bak")
+                try:
+                    import shutil
+                    shutil.copy2(path, backup)
+                    path.write_text("".join(clean_lines), errors="ignore")
+                except Exception:
+                    pass
+
+    return removed
+
+
 # ---------------------------------------------------------------------------
 # Shell profiles
 # ---------------------------------------------------------------------------

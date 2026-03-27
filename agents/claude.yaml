@@ -1,4 +1,4 @@
 interface:
   display_name: "CC Check"
-  short_description: "Inspect and repair terminal environment: DNS, proxy, IP quality, system fingerprint, and VPN state"
+  short_description: "Inspect and repair Claude Code environment: DNS, proxy, IP quality, system fingerprint, and VPN state"
   default_prompt: "Use $cc-check to inspect first, then repair and verify the environment on this machine. Run inspect to audit, fix-local for local repairs, and verify to confirm."

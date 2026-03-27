@@ -364,8 +364,15 @@ def inspect_dns(public_ip: str | None) -> list[Finding]:
         if any(s in plat.SUSPICIOUS_DNS for s in servers):
             suspicious_services.append(f"{svc}: {', '.join(servers)}")
     if suspicious_services:
-        findings.append(Finding("dns", "system-dns-display", "fail",
-                                f"Suspicious DNS on: {'; '.join(suspicious_services)}"))
+        # When Clash TUN is active with dns-hijack, system DNS display is
+        # cosmetic — all DNS is hijacked by TUN regardless. Downgrade to warn.
+        tun_active = bool(plat.get_tun_interfaces()) and plat.is_clash_running()
+        if tun_active:
+            findings.append(Finding("dns", "system-dns-display", "warn",
+                                    f"Cosmetic DNS (TUN active): {'; '.join(suspicious_services)}"))
+        else:
+            findings.append(Finding("dns", "system-dns-display", "fail",
+                                    f"Suspicious DNS on: {'; '.join(suspicious_services)}"))
     else:
         findings.append(Finding("dns", "system-dns-display", "pass", "System DNS display is clean"))
     return findings

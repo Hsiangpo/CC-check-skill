@@ -329,23 +329,20 @@ def get_dns_servers() -> dict[str, list[str]]:
 
 
 def clear_dns_for_service(service: str) -> None:
-    """将指定网络接口的可疑 DNS 替换为安全的国际 DNS。
+    """将指定网络接口的 DNS 替换为安全的公共 DNS。
 
-    ⚠️ 不能使用 "Empty" 清空 DNS！
-    原因：Clash Verge 的代理节点域名需要 DNS 解析。如果直接清空系统 DNS，
-    节点域名无法解析 → 所有节点 Timeout → 网络完全中断。
-    正确做法：替换为 8.8.8.8 + 1.1.1.1，既消除中国 DNS 指纹，又保持连通性。
+    注意：不能使用 'Empty' 清空 DNS，否则 Clash Verge 等代理客户端
+    无法解析节点服务器域名，导致所有节点 Timeout、网络完全中断。
+    正确做法是替换为无风控风险的公共 DNS（Google / Cloudflare）。
     """
     safe_dns = ["8.8.8.8", "1.1.1.1"]
     if PLATFORM == "darwin":
         dns_str = " ".join(safe_dns)
         run_shell(f'networksetup -setdnsservers "{service}" {dns_str}')
     elif PLATFORM == "linux":
-        # Try to set DNS via resolvectl; fall back to revert
-        for dns in safe_dns:
-            run_shell(f"sudo resolvectl dns 1 {dns} 2>/dev/null || true")
         run_shell("sudo resolvectl revert 2>/dev/null || true")
     elif PLATFORM == "win32":
+        # Set safe DNS on the specified interface
         dns_csv = ",".join(f'"{d}"' for d in safe_dns)
         run_shell(
             f'Set-DnsClientServerAddress -InterfaceAlias "{service}" '
@@ -838,8 +835,6 @@ def install_dns_watchdog(clash_dir: Path) -> list[str]:
 def _build_macos_cleanup_script() -> str:
     return """#!/bin/zsh
 set -euo pipefail
-# CC-check DNS watchdog: replace suspicious China DNS with safe international DNS
-# ⚠️ Do NOT use "Empty" — it breaks Clash node domain resolution
 if ! pgrep -f "/Applications/Clash Verge.app/Contents/MacOS/clash-verge" >/dev/null 2>&1; then exit 0; fi
 while IFS= read -r service; do
   service=${service#\\*}; service=${service## }

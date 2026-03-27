@@ -700,6 +700,44 @@ def fix_local(ctx: Context, findings: list[Finding] | None = None) -> list[str]:
         else:
             actions.extend(plat.install_dns_watchdog(ctx.clash_dir))
 
+    # Package mirrors: npm
+    if has_failure(findings, {"npm-registry"}):
+        if ctx.dry_run:
+            actions.append("[DRY RUN] Would reset npm registry to https://registry.npmjs.org/")
+        else:
+            plat.run_shell("npm config set registry https://registry.npmjs.org/")
+            actions.append("Reset npm registry to https://registry.npmjs.org/")
+
+    # Package mirrors: pip
+    if has_failure(findings, {"pip-index"}):
+        if ctx.dry_run:
+            actions.append("[DRY RUN] Would remove China pip index-url from config")
+        else:
+            plat.run_shell("pip3 config unset global.index-url 2>/dev/null || true")
+            for pip_conf in [ctx.home / ".pip" / "pip.conf", ctx.home / ".config" / "pip" / "pip.conf"]:
+                if pip_conf.exists():
+                    text = pip_conf.read_text(errors="ignore")
+                    cleaned = re.sub(r'index-url\s*=\s*\S+\n?', '', text)
+                    pip_conf.write_text(cleaned)
+            actions.append("Removed China pip mirror from config")
+
+    # Package mirrors: brew
+    if has_failure(findings, {"brew-mirrors"}):
+        brew_keys = ["HOMEBREW_API_DOMAIN", "HOMEBREW_BOTTLE_DOMAIN", "HOMEBREW_BREW_GIT_REMOTE"]
+        if ctx.dry_run:
+            actions.append(f"[DRY RUN] Would remove brew mirror env vars from shell profiles: {', '.join(brew_keys)}")
+        else:
+            for profile_path in plat.get_shell_profile_paths():
+                if not profile_path.exists():
+                    continue
+                text = profile_path.read_text(errors="ignore")
+                modified = text
+                for key in brew_keys:
+                    modified = re.sub(rf'export\s+{key}=\S+\n?', '', modified)
+                if modified != text:
+                    profile_path.write_text(modified)
+            actions.append("Removed brew China mirror env vars from shell profiles")
+
     return actions or ["No local repairs needed"]
 
 

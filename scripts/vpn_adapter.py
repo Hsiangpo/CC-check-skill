@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -128,7 +129,10 @@ def inspect(
             findings.append({"key": "project-root", "status": "pass", "summary": f"VPN project root detected at {vpn_root.name}", "details": [f"adapter={adapter}"]})
 
     if vpn_root is not None and adapter_name(vpn_root) is not None:
-        test_result = run_shell(f'cd "{vpn_root}" && python3 -m unittest tests/test_subscription_builder.py', timeout=120)
+        test_result = subprocess.run(
+            [sys.executable, "-m", "unittest", "tests/test_subscription_builder.py"],
+            capture_output=True, text=True, timeout=120, check=False, cwd=vpn_root,
+        )
         findings.append(
             {
                 "key": "unit-tests",
@@ -279,11 +283,17 @@ def fix(
         return ["[DRY RUN] Would regenerate subscription and deploy"]
 
     actions: list[str] = []
-    run_shell(f'cd "{vpn_root}" && python3 scripts/subscription_builder.py', timeout=120)
+    subprocess.run(
+        [sys.executable, "scripts/subscription_builder.py"],
+        capture_output=True, text=True, timeout=120, check=False, cwd=vpn_root,
+    )
     actions.append("Regenerated VPN subscription outputs")
 
     if failed({"public-subscription", "remote-service", "remote-listener"}):
-        result = run_shell(f'cd "{vpn_root}" && python3 scripts/deploy_6node_subscription.py', timeout=1800)
+        result = subprocess.run(
+            [sys.executable, "scripts/deploy_6node_subscription.py"],
+            capture_output=True, text=True, timeout=1800, check=False, cwd=vpn_root,
+        )
         if result.returncode != 0:
             output = redact_text(result.stdout + "\n" + result.stderr, redaction_tokens(vpn_root))
             raise RuntimeError(f"VPN deploy failed:\n{output[-4000:]}")

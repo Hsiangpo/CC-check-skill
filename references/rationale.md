@@ -112,7 +112,7 @@ IDC-tunneled "residential" IPs (伪住宅) are detected by:
 - **Packages (6)**: China mirrors = strong geo signal
 - **Privacy (6)**: Telemetry control
 - **Clash (8)**: Proxy client state and TUN
-- **Node.js (3)**: Runtime verification
+- **Node.js (2)**: Runtime verification
 - **Identity (1)**: Low risk but still checked
 - **Claude (1)**: Settings file
 

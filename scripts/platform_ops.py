@@ -284,7 +284,12 @@ def clear_dns_for_service(service: str) -> None:
         run_shell(f'networksetup -setdnsservers "{service}" Empty')
     elif PLATFORM == "linux":
         run_shell("sudo resolvectl revert 2>/dev/null || true")
-    # Windows: usually managed by proxy client
+    elif PLATFORM == "win32":
+        # Reset DNS to DHCP-assigned on the specified interface
+        run_shell(
+            f'Set-DnsClientServerAddress -InterfaceAlias "{service}" '
+            f'-ResetServerAddresses'
+        )
 
 
 def flush_dns_cache() -> None:
@@ -637,7 +642,42 @@ def install_dns_watchdog(clash_dir: Path) -> list[str]:
         actions.append("Installed macOS DNS cleanup watchdog LaunchAgent")
 
     elif PLATFORM == "linux":
-        actions.append("Linux DNS watchdog: use systemd-resolved or NetworkManager; skip LaunchAgent")
+        # Install systemd user timer for DNS cleanup
+        config_dir = Path.home() / ".config" / "systemd" / "user"
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        cleanup_script = clash_dir / "cleanup_system_dns.sh"
+        cleanup_script.write_text(_build_linux_cleanup_script(), encoding="utf-8")
+        cleanup_script.chmod(0o755)
+
+        service_unit = config_dir / "cc-check-dns-cleanup.service"
+        service_unit.write_text(
+            "[Unit]\n"
+            "Description=CC-check DNS cleanup\n\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            f"ExecStart={cleanup_script}\n",
+            encoding="utf-8",
+        )
+
+        timer_unit = config_dir / "cc-check-dns-cleanup.timer"
+        timer_unit.write_text(
+            "[Unit]\n"
+            "Description=CC-check DNS cleanup timer\n\n"
+            "[Timer]\n"
+            "OnBootSec=30s\n"
+            "OnUnitActiveSec=15s\n\n"
+            "[Install]\n"
+            "WantedBy=timers.target\n",
+            encoding="utf-8",
+        )
+
+        run_shell("systemctl --user daemon-reload")
+        run_shell("systemctl --user enable --now cc-check-dns-cleanup.timer")
+        actions.append("Installed Linux DNS cleanup systemd user timer")
+
+    elif PLATFORM == "win32":
+        actions.append("Windows DNS watchdog: not implemented (DNS usually managed by proxy client)")
     return actions
 
 
@@ -653,6 +693,31 @@ while IFS= read -r service; do
     /usr/sbin/networksetup -setdnsservers "$service" Empty >/dev/null 2>&1 || true
   fi
 done < <(/usr/sbin/networksetup -listallnetworkservices | tail -n +2)
+"""
+
+
+def _build_linux_cleanup_script() -> str:
+    """生成 Linux DNS 清理 bash 脚本。"""
+    suspicious_list = " ".join(SUSPICIOUS_DNS)
+    return f"""#!/bin/bash
+set -euo pipefail
+# CC-check DNS cleanup for Linux
+# Checks resolv.conf and resolvectl for suspicious China DNS servers
+
+SUSPICIOUS=({suspicious_list})
+
+cleanup_resolv() {{
+    if [ ! -f /etc/resolv.conf ]; then return; fi
+    for dns in "${{SUSPICIOUS[@]}}"; do
+        if grep -q "$dns" /etc/resolv.conf 2>/dev/null; then
+            sudo resolvectl revert 2>/dev/null || true
+            echo "Reverted DNS via resolvectl"
+            return
+        fi
+    done
+}}
+
+cleanup_resolv
 """
 
 

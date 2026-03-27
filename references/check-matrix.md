@@ -1,6 +1,6 @@
-# CC-Check Audit Matrix v2
+# CC-Check Audit Matrix v3
 
-> 11 groups, 40+ checks, 100-point scale (exact)
+> 11 groups, 40+ checks, 100-point scale (exact), 36 unit tests
 
 ## 1. IP Quality (weight: 30/100) 🔴 最高优先级
 

@@ -1,4 +1,4 @@
-# CC-Check Audit Matrix v3
+# CC-Check Audit Matrix v1.3.0
 
 > 11 groups, 50+ checks, 100-point scale (exact), 44 unit tests
 

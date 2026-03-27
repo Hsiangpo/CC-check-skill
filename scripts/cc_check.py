@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CC-check v2 — 跨平台 Claude Code / 代理环境审计与修复工具。
+"""CC-check v1.3.0 — 跨平台 Claude Code / 代理环境审计与修复工具。
 
 支持 macOS / Linux / Windows。
 功能：inspect → fix → verify 闭环，100分制评分，dry-run 预览。

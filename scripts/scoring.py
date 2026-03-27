@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CC-check 评分系统。
+"""CC-check v1.3.0 评分系统。
 
 将每个 Finding 映射到分值，汇总生成百分制报告。
 """
@@ -15,7 +15,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 # 权重定义 — 各组权重之和 = 100
-# IP质量 30 > DNS 15 > System 20 > Network 10 > Clash 8 > Packages 6 > Privacy 6 > Node.js 2 > VPN 1 > Identity 1 > Claude 1
+# IP质量 30 > DNS 15 > System 21 > Network 10 > Clash 8 > Packages 6 > Privacy 6 > Node.js 2 > VPN 0 > Identity 1 > Claude 1
 WEIGHTS: dict[str, dict[str, int]] = {
     "ip-quality": {
         "classification": 30,             # 最高优先级：IP 类型/风险/ISP 直接决定 API 风控结果
@@ -36,6 +36,8 @@ WEIGHTS: dict[str, dict[str, int]] = {
         "input-method": 1,               # 输入法
         "hosts-file": 1,                  # hosts 文件
         "user-identity": 1,               # 用户名
+        "vscode-locale": 0,               # VS Code 语言（信息性）
+        "font-fingerprint": 0,            # 字体指纹（信息性）
     },
     "network": {
         "public-ip": 5,                   # 公网 IP 可达
@@ -54,12 +56,15 @@ WEIGHTS: dict[str, dict[str, int]] = {
         "pip-index": 1,                   # pip 镜像
         "brew-mirrors": 1,                # brew 镜像
         "china-mirror-residue": 2,        # 中国镜像残留
+        "goproxy": 0,                     # GOPROXY（信息性）
+        "docker-mirror": 0,               # Docker 镜像源（信息性）
     },
     "privacy": {
         "telemetry": 2,                   # 遥测目录
         "privacy-env": 2,                 # 隐私环境变量
         "session-residue": 1,             # 会话残留
         "shell-history": 1,               # 历史记录
+        "ssh-known-hosts": 0,             # SSH 已知主机（信息性）
     },
     "nodejs": {
         "node-tz": 1,                     # Node.js 时区
@@ -75,6 +80,7 @@ WEIGHTS: dict[str, dict[str, int]] = {
     },
     "identity": {
         "git-identity": 1,                # 低风险
+        "git-remotes": 0,                 # Git 远程仓库（信息性）
     },
     "claude": {
         "language": 1,                    # 设置文件

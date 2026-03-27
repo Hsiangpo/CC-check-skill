@@ -1,4 +1,4 @@
-# CC-Check Rationale & Decision Log v3
+# CC-Check Rationale & Decision Log v1.3.0
 
 ## Why These Checks Matter
 

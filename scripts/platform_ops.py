@@ -329,16 +329,27 @@ def get_dns_servers() -> dict[str, list[str]]:
 
 
 def clear_dns_for_service(service: str) -> None:
-    """清除指定网络接口的手工 DNS 设置。"""
+    """将指定网络接口的可疑 DNS 替换为安全的国际 DNS。
+
+    ⚠️ 不能使用 "Empty" 清空 DNS！
+    原因：Clash Verge 的代理节点域名需要 DNS 解析。如果直接清空系统 DNS，
+    节点域名无法解析 → 所有节点 Timeout → 网络完全中断。
+    正确做法：替换为 8.8.8.8 + 1.1.1.1，既消除中国 DNS 指纹，又保持连通性。
+    """
+    safe_dns = ["8.8.8.8", "1.1.1.1"]
     if PLATFORM == "darwin":
-        run_shell(f'networksetup -setdnsservers "{service}" Empty')
+        dns_str = " ".join(safe_dns)
+        run_shell(f'networksetup -setdnsservers "{service}" {dns_str}')
     elif PLATFORM == "linux":
+        # Try to set DNS via resolvectl; fall back to revert
+        for dns in safe_dns:
+            run_shell(f"sudo resolvectl dns 1 {dns} 2>/dev/null || true")
         run_shell("sudo resolvectl revert 2>/dev/null || true")
     elif PLATFORM == "win32":
-        # Reset DNS to DHCP-assigned on the specified interface
+        dns_csv = ",".join(f'"{d}"' for d in safe_dns)
         run_shell(
             f'Set-DnsClientServerAddress -InterfaceAlias "{service}" '
-            f'-ResetServerAddresses'
+            f'-ServerAddresses ({dns_csv})'
         )
 
 
@@ -827,13 +838,15 @@ def install_dns_watchdog(clash_dir: Path) -> list[str]:
 def _build_macos_cleanup_script() -> str:
     return """#!/bin/zsh
 set -euo pipefail
+# CC-check DNS watchdog: replace suspicious China DNS with safe international DNS
+# ⚠️ Do NOT use "Empty" — it breaks Clash node domain resolution
 if ! pgrep -f "/Applications/Clash Verge.app/Contents/MacOS/clash-verge" >/dev/null 2>&1; then exit 0; fi
 while IFS= read -r service; do
   service=${service#\\*}; service=${service## }
   [[ -z "$service" ]] && continue
   current=$(/usr/sbin/networksetup -getdnsservers "$service" 2>/dev/null || true)
   if [[ "$current" == *"114.114.114.114"* ]] || [[ "$current" == *"223.5.5.5"* ]] || [[ "$current" == *"223.6.6.6"* ]] || [[ "$current" == *"119.29.29.29"* ]]; then
-    /usr/sbin/networksetup -setdnsservers "$service" Empty >/dev/null 2>&1 || true
+    /usr/sbin/networksetup -setdnsservers "$service" 8.8.8.8 1.1.1.1 >/dev/null 2>&1 || true
   fi
 done < <(/usr/sbin/networksetup -listallnetworkservices | tail -n +2)
 """

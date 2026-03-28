@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🛡️ CC-Check
+<img src="assets/logo.png" width="180" alt="CC-Check Logo">
+
+# CC-Check
 
 ### 终端环境审计与加固工具
 
@@ -151,27 +153,19 @@ python scripts/cc_check.py inspect \
 > 占总分 **30%**，权重最高。单一渠道容易被绕过，五渠道交叉几乎无法伪造。
 
 ```
-                    ┌──────────────┐
-                    │   Your IP    │
-                    └──────┬───────┘
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐    ┌──────────┐
-    │ ipinfo.io│    │ ip-api   │    │proxycheck│
-    │ Geo+ASN  │    │ Type+ISP │    │ Risk+VPN │
-    └────┬─────┘    └────┬─────┘    └────┬─────┘
-         │               │               │
-         ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐
-    │ bgpview  │    │  whois   │
-    │ BGP/RIR  │    │ Country  │
-    └────┬─────┘    └────┬─────┘
-         │               │
-         ▼               ▼
-    ┌────────────────────────────┐
-    │   Consensus Classification │
-    │  residential / proxy / idc │
-    └────────────────────────────┘
+Your IP
+  │
+  ├──▶ ipinfo.io ──── 地理位置 + ASN + 运营商
+  ├──▶ ip-api.com ─── 代理/机房/移动 类型标记
+  ├──▶ proxycheck ─── VPN 检测 + 风险评分
+  ├──▶ bgpview.io ─── BGP 前缀 + RIR 分配
+  └──▶ whois ──────── 注册国家 + 网络块
+          │
+          ▼
+  ┌─────────────────────┐
+  │  综合分类判定         │
+  │  residential / proxy │
+  └─────────────────────┘
 ```
 
 <details>

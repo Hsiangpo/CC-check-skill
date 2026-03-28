@@ -982,10 +982,21 @@ def check_hosts_file() -> list[str]:
 # Shell history
 # ---------------------------------------------------------------------------
 
-CHINA_DOMAIN_KEYWORDS = [
-    "taobao", "aliyun", "tencent", "baidu", "163.com", "qq.com",
-    "weixin", "wechat", "zhihu", "bilibili", "cnpm", "npmmirror",
-    "douyin", "bytedance", "jd.com", "alibaba",
+SHELL_HISTORY_PATTERNS = [
+    ("registry.npmmirror.com", re.compile(r"(?:^|[^a-z0-9])registry\.npmmirror\.com(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("npmmirror.com", re.compile(r"(?:^|[^a-z0-9])npmmirror\.com(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("pypi.tuna.tsinghua.edu.cn", re.compile(r"(?:^|[^a-z0-9])pypi\.tuna\.tsinghua\.edu\.cn(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("pypi.mirrors.ustc.edu.cn", re.compile(r"(?:^|[^a-z0-9])pypi\.mirrors\.ustc\.edu\.cn(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("mirrors.aliyun.com", re.compile(r"(?:^|[^a-z0-9])mirrors\.aliyun\.com(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("mirrors.cloud.tencent.com", re.compile(r"(?:^|[^a-z0-9])mirrors\.cloud\.tencent\.com(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("goproxy.cn", re.compile(r"(?:^|[^a-z0-9])goproxy\.cn(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("proxy.golang.com.cn", re.compile(r"(?:^|[^a-z0-9])proxy\.golang\.com\.cn(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("gitee.com", re.compile(r"(?:^|[^a-z0-9])gitee\.com(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("hub-mirror.c.163.com", re.compile(r"(?:^|[^a-z0-9])hub-mirror\.c\.163\.com(?:[^a-z0-9]|$)", re.IGNORECASE)),
+    ("223.5.5.5", re.compile(r"(?:^|[^0-9])223\.5\.5\.5(?:[^0-9]|$)")),
+    ("223.6.6.6", re.compile(r"(?:^|[^0-9])223\.6\.6\.6(?:[^0-9]|$)")),
+    ("114.114.114.114", re.compile(r"(?:^|[^0-9])114\.114\.114\.114(?:[^0-9]|$)")),
+    ("119.29.29.29", re.compile(r"(?:^|[^0-9])119\.29\.29\.29(?:[^0-9]|$)")),
 ]
 
 
@@ -1003,11 +1014,15 @@ def scan_shell_history() -> dict[str, int]:
             text = path.read_text(errors="ignore")
         except Exception:
             continue
-        for keyword in CHINA_DOMAIN_KEYWORDS:
-            count = text.lower().count(keyword)
+        for label, pattern in SHELL_HISTORY_PATTERNS:
+            count = len(pattern.findall(text))
             if count > 0:
-                hits[keyword] = hits.get(keyword, 0) + count
+                hits[label] = hits.get(label, 0) + count
     return hits
+
+
+def _matches_shell_history_pattern(line: str) -> bool:
+    return any(pattern.search(line) for _, pattern in SHELL_HISTORY_PATTERNS)
 
 
 def clean_shell_history(dry_run: bool = False) -> dict[str, int]:
@@ -1026,8 +1041,6 @@ def clean_shell_history(dry_run: bool = False) -> dict[str, int]:
         if path.exists():
             history_files.append(path)
 
-    keywords_lower = [k.lower() for k in CHINA_DOMAIN_KEYWORDS]
-
     for path in history_files:
         try:
             lines = path.read_text(errors="ignore").splitlines(keepends=True)
@@ -1037,8 +1050,7 @@ def clean_shell_history(dry_run: bool = False) -> dict[str, int]:
         clean_lines = []
         removed_count = 0
         for line in lines:
-            lower = line.lower()
-            if any(kw in lower for kw in keywords_lower):
+            if _matches_shell_history_pattern(line):
                 removed_count += 1
             else:
                 clean_lines.append(line)
@@ -1049,9 +1061,8 @@ def clean_shell_history(dry_run: bool = False) -> dict[str, int]:
                 # Backup before modifying
                 backup = path.with_suffix(path.suffix + ".bak")
                 try:
-                    import shutil
                     shutil.copy2(path, backup)
-                    path.write_text("".join(clean_lines), errors="ignore")
+                    path.write_text("".join(clean_lines), encoding="utf-8", errors="ignore")
                 except Exception:
                     pass
 
@@ -1194,19 +1205,24 @@ def install_dns_watchdog(clash_dir: Path) -> list[str]:
         task_name = "CC-Check-DNS-Cleanup"
         # Remove existing task if any
         run_shell(f'schtasks /Delete /TN "{task_name}" /F 2>$null; exit 0')
+        run_shell(f'schtasks /Delete /TN "{task_name}-Logon" /F 2>$null; exit 0')
         # Create scheduled task: run every 1 minute, at logon
-        run_shell(
+        minute_task = run_shell(
             f'schtasks /Create /TN "{task_name}" '
             f'/TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\"{ps_script}\\"" '
-            f'/SC MINUTE /MO 1 /F'
+            f'/SC MINUTE /MO 1 /RL HIGHEST /F'
         )
         # Also run at logon
-        run_shell(
+        logon_task = run_shell(
             f'schtasks /Create /TN "{task_name}-Logon" '
             f'/TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\"{ps_script}\\"" '
-            f'/SC ONLOGON /F'
+            f'/SC ONLOGON /RL HIGHEST /F'
         )
-        actions.append("Installed Windows DNS cleanup Task Scheduler job (every 60s)")
+        if minute_task.returncode == 0 and logon_task.returncode == 0:
+            actions.append("Installed Windows DNS cleanup Task Scheduler jobs with highest privilege")
+        else:
+            actions.append("Failed to install Windows DNS cleanup Task Scheduler jobs with highest privilege")
+            actions.append("Run PowerShell as Administrator and retry DNS watchdog installation")
     return actions
 
 

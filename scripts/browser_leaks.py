@@ -346,6 +346,38 @@ def run_python_checks() -> list[BrowserFinding]:
     return findings
 
 
+def build_report_payload(findings: list[BrowserFinding]) -> dict[str, Any]:
+    """构建带自动项和手工清单的结构化结果。"""
+    automated = [
+        {
+            "test": finding.test,
+            "key": finding.key,
+            "status": finding.status,
+            "summary": finding.summary,
+            "details": finding.details,
+        }
+        for finding in findings
+    ]
+    manual = [
+        {
+            "test": item["test"],
+            "name": item["name"],
+            "url": item["url"],
+            "critical": item["critical"],
+            "description": item["description"],
+            "pass_criteria": item["pass_criteria"],
+            "fail_indicators": item["fail_indicators"],
+        }
+        for item in BROWSER_TESTS
+    ]
+    return {
+        "mode": "python-baseline-plus-manual-checklist",
+        "automation_supported": False,
+        "automated": automated,
+        "manual": manual,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Print results
 # ---------------------------------------------------------------------------

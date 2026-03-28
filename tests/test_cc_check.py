@@ -26,6 +26,7 @@ from ip_quality import (
     IANA_TIMEZONE_TO_LOCALE, parse_whois_country,
 )
 import cc_check
+import browser_leaks as bleaks
 import platform_ops as plat
 
 
@@ -486,6 +487,219 @@ class TestClashVergeDnsToggleSafety(unittest.TestCase):
 
             self.assertTrue(changed)
             self.assertIn("enable_dns_settings: false", (clash_dir / "verge.yaml").read_text(encoding="utf-8"))
+
+
+class TestFixLocalRiskGates(unittest.TestCase):
+    """验证高风险修复默认不会自动执行。"""
+
+    @patch.object(cc_check.plat, "PLATFORM", "darwin")
+    def test_fix_local_skips_risky_repairs_without_allow_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            clash_dir = root / "clash"
+            clash_dir.mkdir()
+            ctx = cc_check.Context(
+                skill_root=root,
+                home=root,
+                claude_dir=root / ".claude",
+                clash_dir=clash_dir,
+                vpn_root=None,
+                public_subscription_url=None,
+                target_timezone=None,
+                target_locale=None,
+                target_language=None,
+                proxy_url=None,
+                expected_ip_type="residential",
+                dry_run=False,
+            )
+            findings = [
+                cc_check.Finding("dns", "system-dns-display", "fail", "Suspicious DNS display"),
+                cc_check.Finding("privacy", "shell-history", "warn", "Shell history contains China domains"),
+                cc_check.Finding("system", "input-method", "warn", "System Chinese IME enabled"),
+                cc_check.Finding("clash", "dns-cleanup-watchdog", "warn", "DNS watchdog missing"),
+            ]
+
+            with (
+                patch("cc_check.fetch_public_ip", return_value=None),
+                patch("cc_check.build_target_profile", return_value={}),
+                patch.object(cc_check.plat, "set_static_dns") as mock_static_dns,
+                patch.object(cc_check.plat, "install_dns_watchdog") as mock_watchdog,
+                patch.object(cc_check.plat, "clean_shell_history") as mock_history,
+                patch.object(cc_check.plat, "install_rime") as mock_rime,
+                patch.object(cc_check.plat, "remove_system_chinese_ime") as mock_remove_ime,
+            ):
+                actions = cc_check.fix_local(ctx, findings=findings)
+
+            mock_static_dns.assert_not_called()
+            mock_watchdog.assert_not_called()
+            mock_history.assert_not_called()
+            mock_rime.assert_not_called()
+            mock_remove_ime.assert_not_called()
+            self.assertTrue(any("--allow-static-dns" in action for action in actions))
+            self.assertTrue(any("--allow-dns-watchdog" in action for action in actions))
+            self.assertTrue(any("--allow-shell-history-cleanup" in action for action in actions))
+            self.assertTrue(any("--allow-rime-install" in action for action in actions))
+            self.assertTrue(any("--allow-ime-removal" in action for action in actions))
+
+    @patch.object(cc_check.plat, "PLATFORM", "darwin")
+    def test_fix_local_executes_allowed_risky_repairs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            clash_dir = root / "clash"
+            clash_dir.mkdir()
+            ctx = cc_check.Context(
+                skill_root=root,
+                home=root,
+                claude_dir=root / ".claude",
+                clash_dir=clash_dir,
+                vpn_root=None,
+                public_subscription_url=None,
+                target_timezone=None,
+                target_locale=None,
+                target_language=None,
+                proxy_url=None,
+                expected_ip_type="residential",
+                dry_run=False,
+                allow_static_dns=True,
+                allow_dns_watchdog=True,
+                allow_shell_history_cleanup=True,
+                allow_rime_install=True,
+                allow_ime_removal=True,
+            )
+            findings = [
+                cc_check.Finding("dns", "system-dns-display", "fail", "Suspicious DNS display"),
+                cc_check.Finding("privacy", "shell-history", "warn", "Shell history contains China domains"),
+                cc_check.Finding("system", "input-method", "warn", "System Chinese IME enabled"),
+                cc_check.Finding("clash", "dns-cleanup-watchdog", "warn", "DNS watchdog missing"),
+            ]
+
+            with (
+                patch("cc_check.fetch_public_ip", return_value=None),
+                patch("cc_check.build_target_profile", return_value={}),
+                patch.object(cc_check.plat, "set_static_dns", return_value=["Locked static DNS"]) as mock_static_dns,
+                patch.object(cc_check.plat, "install_dns_watchdog", return_value=["Installed DNS watchdog"]) as mock_watchdog,
+                patch.object(cc_check.plat, "clean_shell_history", return_value={"/tmp/.zsh_history": 2}) as mock_history,
+                patch.object(cc_check.plat, "install_rime", return_value=["Installed RIME"]) as mock_rime,
+                patch.object(cc_check.plat, "remove_system_chinese_ime", return_value=["Removed system Chinese IME"]) as mock_remove_ime,
+            ):
+                actions = cc_check.fix_local(ctx, findings=findings)
+
+            mock_static_dns.assert_called_once_with()
+            mock_watchdog.assert_called_once_with(clash_dir)
+            mock_history.assert_called_once_with(dry_run=False)
+            mock_rime.assert_called_once_with(dry_run=False)
+            mock_remove_ime.assert_called_once_with(dry_run=False)
+            self.assertIn("Locked static DNS", actions)
+            self.assertIn("Installed DNS watchdog", actions)
+            self.assertIn("Removed 2 China-domain lines from /tmp/.zsh_history (backup: /tmp/.zsh_history.bak)", actions)
+            self.assertIn("Installed RIME", actions)
+            self.assertIn("Removed system Chinese IME", actions)
+
+
+class TestShellHistoryCleanupPrecision(unittest.TestCase):
+    """验证 shell history 清理只删明确命中的高风险行。"""
+
+    @patch.object(plat, "PLATFORM", "darwin")
+    def test_clean_shell_history_keeps_generic_vendor_words(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch("platform_ops.Path.home", return_value=Path(tmpdir)):
+            history = Path(tmpdir) / ".bash_history"
+            history.write_text(
+                "open -a WeChat\n"
+                "curl https://www.jd.com/\n"
+                "npm config set registry https://registry.npmmirror.com/\n",
+                encoding="utf-8",
+            )
+
+            removed = plat.clean_shell_history(dry_run=False)
+
+            self.assertEqual(removed, {str(history): 1})
+            cleaned = history.read_text(encoding="utf-8")
+            self.assertIn("WeChat", cleaned)
+            self.assertIn("jd.com", cleaned)
+            self.assertNotIn("npmmirror.com", cleaned)
+            self.assertTrue(Path(f"{history}.bak").exists())
+
+
+class TestWindowsDnsWatchdog(unittest.TestCase):
+    """验证 Windows DNS watchdog 任务按最高权限创建。"""
+
+    @patch.object(plat, "PLATFORM", "win32")
+    def test_install_dns_watchdog_uses_highest_privilege(self):
+        commands: list[str] = []
+
+        def fake_run_shell(cmd: str, **_: object) -> subprocess.CompletedProcess:
+            commands.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(plat, "run_shell", side_effect=fake_run_shell):
+            actions = plat.install_dns_watchdog(Path(tmpdir))
+
+        create_cmds = [cmd for cmd in commands if "schtasks /Create" in cmd]
+        self.assertEqual(len(create_cmds), 2)
+        self.assertTrue(all("/RL HIGHEST" in cmd for cmd in create_cmds))
+        self.assertTrue(any("highest privilege" in action.lower() for action in actions))
+
+
+class TestBrowserLeaksReporting(unittest.TestCase):
+    """验证 browser-leaks 报告会同时带出自动项和手工清单。"""
+
+    def test_build_report_payload_includes_manual_checklist(self):
+        findings = [
+            bleaks.BrowserFinding("ip", "multi-endpoint-consistency", "pass", "All endpoints match"),
+        ]
+
+        payload = bleaks.build_report_payload(findings)
+
+        self.assertEqual(payload["mode"], "python-baseline-plus-manual-checklist")
+        self.assertEqual(len(payload["automated"]), 1)
+        self.assertEqual(payload["automated"][0]["key"], "multi-endpoint-consistency")
+        self.assertEqual(len(payload["manual"]), len(bleaks.BROWSER_TESTS))
+        self.assertTrue(payload["manual"][0]["url"].startswith("https://browserleaks.com/"))
+
+
+class TestExtendedInspectHelpers(unittest.TestCase):
+    """验证新增扩展检查的基础回归。"""
+
+    def test_scan_git_remotes_finds_gitee(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch("platform_ops.Path.home", return_value=Path(tmpdir)):
+            repo = Path(tmpdir) / "Projects" / "demo" / ".git"
+            repo.mkdir(parents=True)
+            output = "origin\thttps://gitee.com/example/demo.git (fetch)\n"
+
+            with patch.object(plat, "run_shell", return_value=subprocess.CompletedProcess("git", 0, output, "")):
+                hits = plat.scan_git_remotes()
+
+        self.assertEqual(hits, ["demo: https://gitee.com/example/demo.git"])
+
+    @patch.object(plat, "PLATFORM", "linux")
+    def test_check_vscode_locale_reads_jsonc(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch("platform_ops.Path.home", return_value=Path(tmpdir)):
+            config_dir = Path(tmpdir) / ".config" / "Code" / "User"
+            config_dir.mkdir(parents=True)
+            (config_dir / "settings.json").write_text(
+                '// comment\n{"locale": "zh-CN"}\n',
+                encoding="utf-8",
+            )
+
+            result = plat.check_vscode_locale()
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["locale"], "zh-CN")
+        self.assertTrue(result["china"])
+
+    def test_scan_ssh_known_hosts_flags_china_domain_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch("platform_ops.Path.home", return_value=Path(tmpdir)):
+            ssh_dir = Path(tmpdir) / ".ssh"
+            ssh_dir.mkdir()
+            (ssh_dir / "known_hosts").write_text(
+                "git.aliyun.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItest\n"
+                "8.8.8.8 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIgoogle\n",
+                encoding="utf-8",
+            )
+
+            hits = plat.scan_ssh_known_hosts()
+
+        self.assertEqual(hits, ["git.aliyun.com"])
 
 
 if __name__ == "__main__":

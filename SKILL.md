@@ -39,26 +39,21 @@ Do NOT use this skill for:
 5. **Full**: Or run `full` for the complete inspect → fix → verify cycle.
 
 Use `--dry-run` on any fix command to preview changes without applying them.
+High-risk/system-level repairs are skipped by default unless the matching `--allow-*` flag is present.
 
 ## ⚠️ LLM Interaction Requirements
 
-Before running `fix-local`, the LLM **MUST** warn the user and get explicit consent for the following high-risk operations. Do NOT silently execute them.
+Before running `fix-local` or `full`, the LLM **MUST** explain any risky flag it is about to add and get explicit consent. The CLI now enforces this boundary: risky actions are skipped unless the corresponding `--allow-*` flag is present.
 
-### MUST ASK before executing:
+### Explicit opt-in flags
 
-| Operation | Risk | What to tell the user |
-|-----------|------|----------------------|
-| `clean_shell_history()` | Shell history lines matching China-related keywords will be deleted. Keyword list is broad (includes `wechat`, `jd.com`, `alibaba` etc.) and may accidentally remove legitimate commands. | "检测到 Shell 历史中包含中国域名相关记录。清理会按关键词整行删除，可能误删正常命令。是否继续？建议先用 `--dry-run` 预览。" |
-| `install_rime()` | Installs RIME input method (via brew/apt/choco). This is a system-level software installation. | "检测到当前使用系统自带中文输入法，建议安装 RIME（隐蔽型中文输入法）。这会在系统上安装新软件。是否继续？" |
-| `remove_system_chinese_ime()` | Removes system Chinese input methods (Pinyin, Wubi, etc.). Directly modifies user input method configuration. | "将移除系统自带中文输入法（拼音/五笔等）。这是不可逆操作，移除后需要手动重新添加。是否继续？" |
-
-### MUST WARN before executing:
-
-| Operation | Condition | What to tell the user |
-|-----------|-----------|----------------------|
-| `set_static_dns()` | Triggers on both `fail` and `warn` | "将锁定系统 DNS 为静态设置（防止 DHCP 覆盖）。当 TUN 已接管 DNS 时，这是表面修复，但仍会持久改变系统网络配置。" |
-| `install_dns_watchdog()` | Auto-installs LaunchAgent/systemd timer | "将安装 DNS 守护进程（每 15 秒自动校正 DNS）。这是系统级后台任务。" |
-| DNS watchdog on Windows | Requires admin privileges | "Windows 下 DNS 守护任务需要管理员权限运行。如果当前非管理员权限，任务可能创建成功但执行失败。请以管理员身份运行。" |
+| Flag | Operation | Risk | What to tell the user |
+|------|-----------|------|----------------------|
+| `--allow-static-dns` | `set_static_dns()` | Persists system DNS changes even for warn/cosmetic states. | "将锁定系统 DNS 为静态设置（防止 DHCP 覆盖）。这会持久修改系统网络配置。" |
+| `--allow-dns-watchdog` | `install_dns_watchdog()` | Installs a persistent background repair task. | "将安装 DNS 守护进程。它会创建持续运行的后台任务；Windows 建议管理员权限执行。" |
+| `--allow-shell-history-cleanup` | `clean_shell_history()` | Deletes matched shell history lines. Matching is now strict mirror/DNS/domain patterns, but it still mutates history files. | "将删除命中的 shell history 行。虽然现在只匹配明确的镜像/DNS/域名模式，但仍会改写历史记录文件。" |
+| `--allow-rime-install` | `install_rime()` | Installs system input method software. | "将安装 RIME 输入法。这会在系统中新增输入法软件。" |
+| `--allow-ime-removal` | `remove_system_chinese_ime()` | Directly edits user input-source configuration. | "将移除系统自带中文输入法（拼音/五笔等）。这是输入法配置变更，可能需要手动恢复。" |
 
 ## Commands
 
@@ -72,11 +67,23 @@ python3 <path>/scripts/cc_check.py inspect --json
 # Preview fixes without applying
 python3 <path>/scripts/cc_check.py fix-local --dry-run
 
-# Apply fixes
+# Apply only low-risk fixes
 python3 <path>/scripts/cc_check.py fix-local
+
+# Apply DNS-related high-risk fixes
+python3 <path>/scripts/cc_check.py fix-local --allow-static-dns --allow-dns-watchdog
+
+# Apply shell history cleanup
+python3 <path>/scripts/cc_check.py fix-local --allow-shell-history-cleanup
+
+# Apply input-method changes
+python3 <path>/scripts/cc_check.py fix-local --allow-rime-install --allow-ime-removal
 
 # Full cycle
 python3 <path>/scripts/cc_check.py full
+
+# Browser baseline + manual checklist
+python3 <path>/scripts/cc_check.py browser-leaks --json
 
 # With overrides
 python3 <path>/scripts/cc_check.py inspect \
@@ -147,18 +154,19 @@ Note: 6 informational checks (GOPROXY, Docker mirror, git remotes, VS Code local
 - `~/.claude/` telemetry data
 - Global git config (`user.name`, `user.email`)
 - npm / pip / brew registry reset
+- Clash Verge `enable_dns_settings` toggle when safe
 
-### `fix-local` auto-executes with LLM WARNING (see LLM Interaction Requirements):
+### `fix-local` requires explicit `--allow-*` opt-in:
 - System DNS: DHCP-resistant static DNS (`set_static_dns()`)
   - macOS: `networksetup` + `scutil` StaticDNS override
   - Linux: `nmcli` with `ignore-auto-dns=yes` or `resolved.conf` fallback
   - Windows: `netsh` static DNS mode (⚠️ requires admin privileges)
 - DNS cleanup watchdog (macOS LaunchAgent / Linux systemd timer / Windows Task Scheduler)
-
-### `fix-local` requires EXPLICIT USER CONSENT (see LLM Interaction Requirements):
-- Shell history cleanup (`clean_shell_history()`) — keyword-based deletion, may cause data loss
+- Shell history cleanup (`clean_shell_history()`) — strict mirror/DNS/domain pattern deletion, still mutates history files
 - RIME input method installation (`install_rime()`) — installs system software
 - System Chinese IME removal (`remove_system_chinese_ime()`) — irreversible input method change
+
+`--dry-run` still previews these items without applying them.
 
 ### `fix-vpn` may safely mutate:
 - Generated files in the detected VPN project root
@@ -185,13 +193,13 @@ Note: 6 informational checks (GOPROXY, Docker mirror, git remotes, VS Code local
 - **macOS**: fullest inspection and repair support (3-layer DNS protection)
 - **Linux**: full inspection + nmcli/resolved DNS fix + systemd watchdog
 - **Windows**: full inspection + netsh static DNS fix + Task Scheduler watchdog
-  - ⚠️ DNS watchdog needs admin/elevated privileges; code creates the task but `Set-DnsClientServerAddress` may fail without elevation
+  - ⚠️ DNS watchdog is now created with `schtasks /RL HIGHEST`, but DNS mutation still needs an elevated shell to actually succeed
 
 Do not promise full parity across platforms unless the implementation actually has it.
 
 ## Browser Leak Detection
 
-The `browser-leaks` subcommand currently runs **Python-level checks only** (timezone, locale, language, connection). The WebRTC / JavaScript / Canvas / font fingerprint analysis logic exists in `browser_leaks.py` but is NOT automatically invoked by the CLI — it requires a browser automation layer (Playwright/Selenium) that is not bundled. Describe this capability as "browser leak detection framework" rather than "full automated browser detection".
+The `browser-leaks` subcommand currently runs **Python-level baseline checks** plus returns a **manual browser checklist** (URLs + pass/fail guidance) in both text and JSON modes. The WebRTC / JavaScript / Canvas / font fingerprint analysis logic exists in `browser_leaks.py` but is NOT automatically invoked by the CLI — it still requires a browser automation layer (Playwright/Selenium/CDP MCP) that is not bundled. Describe this capability as "browser leak detection framework" rather than "full automated browser detection".
 
 ## Architecture
 

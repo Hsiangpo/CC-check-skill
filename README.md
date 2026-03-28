@@ -6,9 +6,9 @@
 
 ### Claude / Claude Code 系统环境审计与隐私加固工具
 
-**50+ 自动化检测 · 100 分制评分 · 一键修复 · 跨平台支持**
+**50+ 自动化检测 · 100 分制评分 · 分级修复 · 跨平台支持**
 
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-0a0a0a?style=flat-square&logo=apple&logoColor=white)](https://github.com/Hsiangpo/CC-check) [![Python](https://img.shields.io/badge/python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![Tests](https://img.shields.io/badge/tests-44%20passed-00C853?style=flat-square&logo=pytest&logoColor=white)](https://github.com/Hsiangpo/CC-check/actions) [![Version](https://img.shields.io/badge/version-1.3.0-FF6F00?style=flat-square&logo=semver&logoColor=white)](https://github.com/Hsiangpo/CC-check) [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-0a0a0a?style=flat-square&logo=apple&logoColor=white)](https://github.com/Hsiangpo/CC-check) [![Python](https://img.shields.io/badge/python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/) [![Tests](https://img.shields.io/badge/tests-52%20passed-00C853?style=flat-square&logo=pytest&logoColor=white)](https://github.com/Hsiangpo/CC-check/actions) [![Version](https://img.shields.io/badge/version-1.3.0-FF6F00?style=flat-square&logo=semver&logoColor=white)](https://github.com/Hsiangpo/CC-check) [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 <br>
 
@@ -50,6 +50,8 @@ python scripts/cc_check.py full
 ```
 
 > **零依赖** — 纯 Python 3.9+ 标准库，无需 `pip install`，开箱即用。
+>
+> **默认只自动执行低风险修复**：系统级网络改动、shell history 删除、输入法安装/移除，必须显式传入 `--allow-*` 旗标才会真正执行。
 
 <details>
 <summary>📦 更多命令</summary>
@@ -63,6 +65,18 @@ python scripts/cc_check.py inspect --json
 
 # 预览修复（不实际执行）
 python scripts/cc_check.py fix-local --dry-run
+
+# 显式允许系统级 DNS 修复
+python scripts/cc_check.py fix-local --allow-static-dns --allow-dns-watchdog
+
+# 显式允许删除 shell history 命中行
+python scripts/cc_check.py fix-local --allow-shell-history-cleanup
+
+# 显式允许输入法改动
+python scripts/cc_check.py fix-local --allow-rime-install --allow-ime-removal
+
+# 浏览器泄露基线检查 + 手工清单
+python scripts/cc_check.py browser-leaks --json
 
 # 自定义目标参数
 python scripts/cc_check.py inspect \
@@ -186,14 +200,30 @@ IDC 隧道包装的"伪住宅"IP（标注为 residential，实际由数据中心
 
 ---
 
-## 🔧 一键修复
+## 🔧 分级修复
 
-CC-Check 不仅是扫描器，更是**自动修复引擎**：
+CC-Check 不仅是扫描器，更是**按风险分层执行的修复引擎**：
 
 ```bash
-python scripts/cc_check.py fix-local          # 执行修复
-python scripts/cc_check.py fix-local --dry-run  # 先预览再决定
+python scripts/cc_check.py fix-local                                # 仅执行低风险修复
+python scripts/cc_check.py fix-local --dry-run                      # 预览所有候选修复
+python scripts/cc_check.py fix-local --allow-static-dns             # 允许系统级 DNS 锁定
+python scripts/cc_check.py fix-local --allow-dns-watchdog           # 允许安装后台 DNS 守护
+python scripts/cc_check.py fix-local --allow-shell-history-cleanup  # 允许删除命中 history 行
 ```
+
+> 默认 `fix-local` 只会自动处理低风险项目：
+> shell profile 环境变量、Claude telemetry、Git 全局身份、npm/pip/brew 镜像、Clash Verge `enable_dns_settings`。
+>
+> 下列高风险/系统级动作必须显式传入 `--allow-*`：
+>
+> | Flag | 动作 | 风险 |
+> |------|------|------|
+> | `--allow-static-dns` | 锁定系统静态 DNS | 会持久修改系统网络配置 |
+> | `--allow-dns-watchdog` | 安装 DNS 守护任务 | 会创建持续运行的后台任务 |
+> | `--allow-shell-history-cleanup` | 删除命中的 shell history 行 | 会改写历史记录文件 |
+> | `--allow-rime-install` | 安装 RIME 输入法 | 会安装系统级软件 |
+> | `--allow-ime-removal` | 移除系统中文输入法 | 会修改输入法配置，带不可逆风险 |
 
 <table>
 <tr><th>修复项</th><th>macOS</th><th>Linux</th><th>Windows</th></tr>
@@ -241,6 +271,8 @@ python scripts/cc_check.py fix-local --dry-run  # 先预览再决定
 | **Layer 3** | 守护进程 (15-60s) | 自动检测漂移并纠正 |
 
 三层叠加后，路由器 DHCP 再怎么推 `114.114.114.114`，也写不进去了。
+
+Windows 下 watchdog 会以 `Task Scheduler /RL HIGHEST` 创建任务，但仍建议用管理员 PowerShell 执行，避免任务创建成功但实际没有权限改 DNS。
 
 </details>
 
@@ -345,20 +377,20 @@ python -m unittest discover -s tests -v
 | Git 全局身份 | 重写 `user.name` / `user.email` |
 | npm / pip / brew 镜像 | 重置为官方源 |
 
-### ⚠️ 自动修复但会警告（系统级变更）
+### ⚠️ 需要显式 `--allow-*` 的系统级修复
 
-| 检测项 | 风险说明 |
-|-------:|---------|
-| 系统静态 DNS | 持久锁定 DNS，防止 DHCP 覆盖 |
-| DNS 守护进程 | 安装系统后台任务（每 15 秒自动校正） |
+| 检测项 | 旗标 | 风险说明 |
+|-------:|------|---------|
+| 系统静态 DNS | `--allow-static-dns` | 持久锁定 DNS，防止 DHCP 覆盖 |
+| DNS 守护进程 | `--allow-dns-watchdog` | 安装系统后台任务（每 15-60 秒自动校正） |
 
 ### 🔒 需要用户明确同意才执行
 
-| 检测项 | 原因 |
-|-------:|------|
-| Shell 历史清理 | 关键词匹配范围较宽，可能误删正常命令 |
-| RIME 输入法安装 | 系统级软件安装 |
-| 系统中文输入法移除 | 不可逆操作 |
+| 检测项 | 旗标 | 原因 |
+|-------:|------|------|
+| Shell 历史清理 | `--allow-shell-history-cleanup` | 会改写历史记录文件；现已收紧为明确镜像/DNS/域名模式 |
+| RIME 输入法安装 | `--allow-rime-install` | 系统级软件安装 |
+| 系统中文输入法移除 | `--allow-ime-removal` | 会修改输入法配置 |
 
 ### ❌ 仅审计不修复（设计如此）
 

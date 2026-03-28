@@ -188,6 +188,11 @@ class Context:
     proxy_url: str | None
     expected_ip_type: str
     dry_run: bool
+    allow_static_dns: bool = False
+    allow_dns_watchdog: bool = False
+    allow_shell_history_cleanup: bool = False
+    allow_rime_install: bool = False
+    allow_ime_removal: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +271,11 @@ def make_context(args: argparse.Namespace) -> Context:
         proxy_url=getattr(args, "proxy_url", None) or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy"),
         expected_ip_type=getattr(args, "expected_ip_type", "residential"),
         dry_run=getattr(args, "dry_run", False),
+        allow_static_dns=getattr(args, "allow_static_dns", False),
+        allow_dns_watchdog=getattr(args, "allow_dns_watchdog", False),
+        allow_shell_history_cleanup=getattr(args, "allow_shell_history_cleanup", False),
+        allow_rime_install=getattr(args, "allow_rime_install", False),
+        allow_ime_removal=getattr(args, "allow_ime_removal", False),
     )
 
 
@@ -870,6 +880,17 @@ def has_failure(findings: list[Finding], keys: set[str]) -> bool:
     return any(f.status == "fail" and f.key in keys for f in findings)
 
 
+def find_item(findings: list[Finding], key: str, statuses: tuple[str, ...]) -> Finding | None:
+    for finding in findings:
+        if finding.key == key and finding.status in statuses:
+            return finding
+    return None
+
+
+def append_risk_skip(actions: list[str], label: str, flag: str, reason: str) -> None:
+    actions.append(f"Skipped {label}: {reason}. Re-run with {flag} to allow this higher-risk repair")
+
+
 def fix_local(ctx: Context, findings: list[Finding] | None = None) -> list[str]:
     findings = findings or collect_findings(ctx, include_vpn=False)
     public_ip = fetch_public_ip()
@@ -923,28 +944,39 @@ def fix_local(ctx: Context, findings: list[Finding] | None = None) -> list[str]:
                 actions.append("Skipped Clash Verge DNS toggle to avoid breaking domain-based proxies")
 
     # DNS display — fix on both fail and warn (TUN cosmetic)
-    dns_needs_fix = any(
-        f.key == "system-dns-display" and f.status in ("fail", "warn")
-        for f in findings
-    )
+    dns_display = find_item(findings, "system-dns-display", ("fail", "warn"))
+    dns_needs_fix = dns_display is not None
     if dns_needs_fix:
         if ctx.dry_run:
             actions.append("[DRY RUN] Would set DHCP-resistant static DNS (cross-platform)")
-        else:
-            # Root-cause fix: set_static_dns() locks DNS against DHCP override
+        elif ctx.allow_static_dns:
             static_actions = plat.set_static_dns()
             actions.extend(static_actions)
+        else:
+            append_risk_skip(
+                actions,
+                "static DNS lock",
+                "--allow-static-dns",
+                f"system-dns-display is {dns_display.status}",
+            )
 
     # DNS watchdog — backup layer (auto-corrects if DHCP still overrides)
-    watchdog_needed = plat.PLATFORM == "darwin" and ctx.clash_dir and (
+    watchdog_needed = ctx.clash_dir and (
         dns_needs_fix or
         any(f.key == "dns-cleanup-watchdog" and f.status != "pass" for f in findings)
     )
     if watchdog_needed:
         if ctx.dry_run:
             actions.append("[DRY RUN] Would install DNS cleanup watchdog")
-        else:
+        elif ctx.allow_dns_watchdog:
             actions.extend(plat.install_dns_watchdog(ctx.clash_dir))
+        else:
+            append_risk_skip(
+                actions,
+                "DNS watchdog installation",
+                "--allow-dns-watchdog",
+                "this creates a persistent background repair task",
+            )
 
     # Package mirrors: npm
     if has_failure(findings, {"npm-registry"}):
@@ -990,19 +1022,42 @@ def fix_local(ctx: Context, findings: list[Finding] | None = None) -> list[str]:
             preview = plat.clean_shell_history(dry_run=True)
             for path, count in preview.items():
                 actions.append(f"[DRY RUN] Would remove {count} China-domain lines from {path}")
-        else:
+        elif ctx.allow_shell_history_cleanup:
             removed = plat.clean_shell_history(dry_run=False)
             for path, count in removed.items():
                 actions.append(f"Removed {count} China-domain lines from {path} (backup: {path}.bak)")
+        else:
+            append_risk_skip(
+                actions,
+                "shell history cleanup",
+                "--allow-shell-history-cleanup",
+                "this deletes matching history lines",
+            )
 
     # Input method: install RIME and remove system Chinese IME
     if any(f.key == "input-method" and f.status == "warn" for f in findings):
         if ctx.dry_run:
             actions.extend(plat.install_rime(dry_run=True))
             actions.extend(plat.remove_system_chinese_ime(dry_run=True))
-        else:
+        elif ctx.allow_rime_install:
             actions.extend(plat.install_rime(dry_run=False))
-            actions.extend(plat.remove_system_chinese_ime(dry_run=False))
+        else:
+            append_risk_skip(
+                actions,
+                "RIME installation",
+                "--allow-rime-install",
+                "this installs system input-method software",
+            )
+        if any(f.key == "input-method" and f.status == "warn" for f in findings) and not ctx.dry_run:
+            if ctx.allow_ime_removal:
+                actions.extend(plat.remove_system_chinese_ime(dry_run=False))
+            else:
+                append_risk_skip(
+                    actions,
+                    "system Chinese IME removal",
+                    "--allow-ime-removal",
+                    "this permanently edits the input-source list",
+                )
 
     return actions or ["No local repairs needed"]
 
@@ -1060,9 +1115,10 @@ def print_report(findings: list[Finding], show_score: bool = True, save: bool = 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="CC-check v2 — Cross-platform environment auditor")
+    parser = argparse.ArgumentParser(description="CC-check v1.3.0 — Cross-platform environment auditor")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    command_parsers: dict[str, argparse.ArgumentParser] = {}
     for name in ("inspect", "fix-local", "fix-vpn", "verify", "full"):
         sp = sub.add_parser(name)
         sp.add_argument("--vpn-root", help="Override VPN project root")
@@ -1075,10 +1131,19 @@ def main() -> int:
         sp.add_argument("--expected-ip-type", default="residential", help="Expected IP type")
         sp.add_argument("--json", action="store_true", help="Output as JSON")
         sp.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
+        command_parsers[name] = sp
+
+    for name in ("fix-local", "full"):
+        sp = command_parsers[name]
+        sp.add_argument("--allow-static-dns", action="store_true", help="Allow static DNS lock (system-level network change)")
+        sp.add_argument("--allow-dns-watchdog", action="store_true", help="Allow persistent DNS watchdog installation")
+        sp.add_argument("--allow-shell-history-cleanup", action="store_true", help="Allow deletion of matching shell history lines")
+        sp.add_argument("--allow-rime-install", action="store_true", help="Allow RIME input method installation")
+        sp.add_argument("--allow-ime-removal", action="store_true", help="Allow removal of system Chinese IMEs")
 
     history_sp = sub.add_parser("history", help="Show score history and trends")
 
-    bl_sp = sub.add_parser("browser-leaks", help="Run browser leak tests")
+    bl_sp = sub.add_parser("browser-leaks", help="Run browser leak baseline checks plus manual checklist")
     bl_sp.add_argument("--json", action="store_true", help="Output as JSON")
 
     dns_sp = sub.add_parser("fix-system-dns-display")
@@ -1096,7 +1161,7 @@ def main() -> int:
         if args.command == "browser-leaks":
             findings = bleaks.run_python_checks()
             if getattr(args, "json", False):
-                print(json.dumps([{"test": f.test, "key": f.key, "status": f.status, "summary": f.summary, "details": f.details} for f in findings], ensure_ascii=False, indent=2))
+                print(json.dumps(bleaks.build_report_payload(findings), ensure_ascii=False, indent=2))
             else:
                 bleaks.print_browser_report(findings, browser_available=False)
             return 0

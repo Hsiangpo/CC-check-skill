@@ -139,11 +139,18 @@ function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
 }
 
+function browserLaunchArgs() {
+  return [
+    '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+    '--disable-features=WebRtcAllowLegacyTLSProtocols',
+  ];
+}
+
 async function launchBrowser(chromium) {
   const attempts = [
-    { headless: true, channel: 'chrome' },
-    { headless: true, channel: 'msedge' },
-    { headless: true },
+    { headless: true, channel: 'chrome', args: browserLaunchArgs() },
+    { headless: true, channel: 'msedge', args: browserLaunchArgs() },
+    { headless: true, args: browserLaunchArgs() },
   ];
   let lastError = null;
 

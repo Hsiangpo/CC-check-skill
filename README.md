@@ -1,6 +1,6 @@
 # 🛡️ CC-Check
 
-**专为国内开发者打造的 Claude Code 终端环境审计与加固工具**
+**专为中国国内开发者打造的 Claude Code 终端环境审计与加固工具**
 
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/Hsiangpo/CC-check)
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)

@@ -1,381 +1,137 @@
-<div align="center">
-
 # 🛡️ CC-Check
 
-### Terminal Environment Auditor & Hardener for AI API Development
+**专为国内开发者打造的 Claude Code 终端环境审计与加固工具**
 
-**50+ automated checks · 100-point scoring · One-click fix · Cross-platform**
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/Hsiangpo/CC-check)
+[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/Tests-44%20passed-00C853?style=flat-square)](https://github.com/Hsiangpo/CC-check/actions)
+[![Version](https://img.shields.io/badge/Version-1.3.0-FF6F00?style=flat-square)](https://github.com/Hsiangpo/CC-check)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-0a0a0a?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Hsiangpo/CC-check)
-[![Python](https://img.shields.io/badge/python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-44%20passed-00C853?style=for-the-badge&logo=pytest&logoColor=white)](https://github.com/Hsiangpo/CC-check/actions)
-[![Version](https://img.shields.io/badge/version-1.3.0-FF6F00?style=for-the-badge&logo=semver&logoColor=white)](https://github.com/Hsiangpo/CC-check)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
-
-<br>
-
-<p>
-  <strong>使用 VPN 做海外 API 开发？你的终端可能正在泄露你的真实位置。</strong>
-</p>
-
-<sub>DNS 泄露 · 中国镜像残留 · 时区错配 · IP 质量低 — 这些信号每天都在被 API 风控捕获。</sub>
-
-<br>
-<br>
-
-```
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║   CC-Check Score:  100 / 100    Grade: A+    (100.0%)    ║
-║                                                          ║
-╠══════════════════════════════════════════════════════════╣
-║   ip-quality     30/30   ██████████████████████  100.0%  ║
-║   dns            15/15   ██████████████████████  100.0%  ║
-║   system         21/21   ██████████████████████  100.0%  ║
-║   network        10/10   ██████████████████████  100.0%  ║
-║   clash           8/8    ██████████████████████  100.0%  ║
-║   packages        6/6    ██████████████████████  100.0%  ║
-║   privacy         6/6    ██████████████████████  100.0%  ║
-║   nodejs          2/2    ██████████████████████  100.0%  ║
-║   identity        1/1    ██████████████████████  100.0%  ║
-║   claude          1/1    ██████████████████████  100.0%  ║
-╚══════════════════════════════════════════════════════════╝
-```
-
-</div>
+> **在中国使用 Claude Code？这就意味着你需要警惕风险。**
+> 
+> DNS 泄露、中国镜像源残留、时区错配、代理 IP 质量低劣 —— 这些微小的终端特征，每天都在被海外 API 严格的风控系统捕获，最终导致账户被限速、风控甚至封禁。
+> 
+> **CC-Check 能一次性彻底扫描并解决这些问题。**
 
 ---
 
-## ⚡ 30 秒快速开始
+## ✨ 核心特性
+
+- **🤖 为 LLM Agent 而生**：完美适配 Claude Code, Gemini CLI, OpenAI Codex 等工具。
+- **🔍 50+ 深度检测项**：从系统时间到 `npm` 镜像，从底层 DNS 劫持到浏览器探针泄漏。
+- **💯 100分制量化风险**：根据风控严重程度（高危/中危/低危）精确计算你的环境安全分。
+- **🔨 一键自动修复**：跨平台（macOS/Linux/Windows）原生修复，支持 `--dry-run` 预览。
+- **🛡️ 独家 DHCP 免疫 DNS 防护**：深入系统底层，锁定系统级 DNS，彻底解决路由器强推 `114.114.114.114` 导致的循环被黑问题（含自动守护 Watchdog）。
+
+## 🚀 30 秒快速开始
+
+**零额外依赖** — 仅需纯 Python 3.9+ 标准库环境。
 
 ```bash
 git clone https://github.com/Hsiangpo/CC-check.git && cd CC-check
 
-# 一行命令，完整闭环：审计 → 修复 → 验证
+# 完整闭环：一键检测 → 自动修复 → 重新验证
 python scripts/cc_check.py full
 ```
 
-> **零依赖** — 纯 Python 3.9+ 标准库。无需 `pip install`，开箱即用。
-
-<details>
-<summary>📦 更多用法</summary>
+### 更多高阶用法
 
 ```bash
-# 仅审计（推荐先跑一遍看看）
+# 仅执行深度体检（推荐首次运行）
 python scripts/cc_check.py inspect
 
-# JSON 输出（接入 CI/CD 自动化）
+# 返回 JSON 格式（适合作为 CI/CD 的一环）
 python scripts/cc_check.py inspect --json
 
-# 预览修复（不实际执行）
+# 仅预览修复命令脚本（安全确认）
 python scripts/cc_check.py fix-local --dry-run
-
-# 自定义目标参数
-python scripts/cc_check.py inspect \
-  --target-timezone America/Los_Angeles \
-  --target-locale en_US.UTF-8 \
-  --proxy-url http://127.0.0.1:7897 \
-  --expected-ip-type residential
-
-# 作为 LLM Agent Skill 直接调用
-> 帮我检查一下终端环境
-> 修复 DNS 泄露
-> 跑一轮完整的环境审计
-```
-
-</details>
-
----
-
-## 🔬 它检测什么？
-
-<table>
-<tr>
-<td width="50%">
-
-### 🔴 高危信号 — 直接触发风控
-
-| 信号 | 检测方法 |
-|------|---------|
-| **中国 ISP DNS** | Google/Cloudflare DNS whoami |
-| **IP = 机房/VPN** | 5 渠道交叉验证 |
-| **伪住宅 IP** | ASN + proxycheck + 风险评分 |
-| **时区/语言错配** | 系统 vs 代理目标对比 |
-
-</td>
-<td width="50%">
-
-### 🟡 中危信号 — 间接暴露地理位置
-
-| 信号 | 检测方法 |
-|------|---------|
-| **npm/pip 中国镜像** | registry 配置 + 缓存扫描 |
-| **GOPROXY 中国源** | `go env` 检测 |
-| **Docker 中国镜像** | daemon.json 扫描 |
-| **Git remote (gitee)** | `.git/config` 扫描 |
-
-</td>
-</tr>
-<tr>
-<td>
-
-### 🟢 低危信号 — 本地指纹残留
-
-| 信号 | 检测方法 |
-|------|---------|
-| **VS Code 中文 locale** | settings.json |
-| **SSH 连接过中国 IP** | known_hosts 扫描 |
-| **非系统捆绑中文字体** | 字体目录扫描 |
-| **Git 全局身份** | git config |
-
-</td>
-<td>
-
-### ⚙️ 代理状态检测
-
-| 信号 | 检测方法 |
-|------|---------|
-| **Clash 进程 / 模式** | 进程检测 + API 查询 |
-| **TUN 模式开启** | 网络接口 + 配置检查 |
-| **DNS 加固标记** | 运行时配置扫描 |
-| **DNS 守护进程** | 守护文件存在性检查 |
-
-</td>
-</tr>
-</table>
-
----
-
-## 🎯 IP 质量 — 五渠道交叉验证
-
-> 占总分 **30%**，是权重最高的检测项。单一渠道容易被绕过，五渠道交叉几乎无法伪造。
-
-```
-                    ┌──────────────┐
-                    │   Your IP    │
-                    └──────┬───────┘
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐    ┌──────────┐
-    │ ipinfo.io│    │ ip-api   │    │proxycheck│
-    │ Geo+ASN  │    │ Type+ISP │    │ Risk+VPN │
-    └────┬─────┘    └────┬─────┘    └────┬─────┘
-         │               │               │
-         ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐
-    │ bgpview  │    │  whois   │
-    │ BGP/RIR  │    │ Country  │
-    └────┬─────┘    └────┬─────┘
-         │               │
-         ▼               ▼
-    ┌────────────────────────────┐
-    │   Consensus Classification │
-    │  residential / proxy / idc │
-    └────────────────────────────┘
-```
-
-<details>
-<summary>💡 伪住宅 IP 检测原理</summary>
-
-IDC 隧道包装的"伪住宅"IP（标注为 residential，实际由数据中心中转）通过以下特征识别：
-
-- ASN 不在已知住宅 ISP 白名单中（Comcast、AT&T、Verizon 等）
-- `proxycheck.io` 返回类型 ≠ residential
-- 风险评分 > 66/100
-
-检测到伪住宅 IP 时会建议更换为真实家宽节点。
-
-</details>
-
----
-
-## 🔧 一键修复
-
-CC-Check 不只是扫描器 — 它能**自动修复**绝大多数问题：
-
-```bash
-python scripts/cc_check.py fix-local          # 执行修复
-python scripts/cc_check.py fix-local --dry-run  # 先预览再决定
-```
-
-<table>
-<tr><th>修复项</th><th>macOS</th><th>Linux</th><th>Windows</th></tr>
-<tr>
-  <td><strong>🌐 DNS 根治</strong><br><sub>DHCP 防覆盖静态 DNS</sub></td>
-  <td>✅ <code>networksetup</code> + <code>scutil</code></td>
-  <td>✅ <code>nmcli</code> + <code>ignore-auto-dns</code></td>
-  <td>✅ <code>netsh static</code></td>
-</tr>
-<tr>
-  <td><strong>⏱️ DNS 守护</strong><br><sub>自动检测并纠正 DNS 篡改</sub></td>
-  <td>✅ LaunchAgent 15s</td>
-  <td>✅ systemd timer 15s</td>
-  <td>✅ Task Scheduler 60s</td>
-</tr>
-<tr>
-  <td><strong>🐚 Shell 环境</strong><br><sub>TZ / LANG / PROXY 变量</sub></td>
-  <td>✅ zsh / bash / fish</td>
-  <td>✅ bash / zsh / fish</td>
-  <td>✅ PowerShell</td>
-</tr>
-<tr>
-  <td><strong>📦 包管理器</strong><br><sub>中国镜像源清除</sub></td>
-  <td>✅ npm / pip / brew</td>
-  <td>✅ npm / pip / brew</td>
-  <td>✅ npm / pip</td>
-</tr>
-<tr>
-  <td><strong>🔒 隐私清理</strong><br><sub>遥测 / Git 身份</sub></td>
-  <td>✅</td>
-  <td>✅</td>
-  <td>✅</td>
-</tr>
-</table>
-
-<details>
-<summary>🛡️ 为什么 DNS 需要三层防护？</summary>
-
-家用路由器会通过 DHCP 推送中国 ISP DNS（如 `114.114.114.114`），即使手动清除也会在网络重连时恢复：
-
-| 层级 | 机制 | 作用 |
-|------|------|------|
-| **Layer 1** | `networksetup` / `nmcli` / `netsh` | 设置手动 DNS，覆盖 DHCP |
-| **Layer 2** | `scutil` StaticDNS / `resolved.conf` | 创建更高优先级 DNS，DHCP 无法覆盖 |
-| **Layer 3** | 守护进程 (15-60s) | 自动检测漂移并纠正 |
-
-三层叠加后，路由器 DHCP 再怎么推 `114.114.114.114`，也写不进去了。
-
-</details>
-
----
-
-## 📊 评分体系
-
-<div align="center">
-
-| 等级 | 分数 | 状态 | 含义 |
-|:----:|:----:|:----:|------|
-| **A+** | ≥ 95 | 🟢 | 生产安全，环境完全对齐 |
-| **A** | ≥ 90 | 🟢 | 仅有轻微外观问题 |
-| **B** | ≥ 80 | 🟡 | 可接受，存在已知 warn |
-| **C** | ≥ 70 | 🟠 | 存在显著缺口 |
-| **D** | ≥ 60 | 🔴 | 需要关注的失败项 |
-| **F** | < 60 | ⛔ | 检测到关键风险 |
-
-</div>
-
-> **权重分配**：IP 质量 (30) > 系统 (21) > DNS (15) > 网络 (10) > Clash (8) > 包管理器 (6) > 隐私 (6) > Node.js (2) > 身份 (1) > Claude (1)
-
----
-
-## 🏗️ 架构
-
-```
-cc-check/
-├── SKILL.md                       # LLM Agent skill 入口
-├── agents/                        # 多平台 Agent 配置
-│   ├── openai.yaml                #   OpenAI Codex
-│   ├── claude.yaml                #   Claude Code
-│   └── gemini.yaml                #   Gemini CLI
-├── references/
-│   ├── check-matrix.md            # 完整审计矩阵（50+ 检测项）
-│   └── rationale.md               # 设计决策与修复逻辑
-├── scripts/
-│   ├── cc_check.py                # 🎯 主编排器 & CLI（~1100 行）
-│   ├── platform_ops.py            # 💻 跨平台抽象层（~1500 行）
-│   ├── ip_quality.py              # 🌐 5 渠道 IP 质量评估
-│   ├── scoring.py                 # 📊 100 分制评分引擎
-│   ├── vpn_adapter.py             # 🔌 VPN 项目适配器
-│   └── browser_leaks.py           # 🔍 浏览器泄露检测
-└── tests/
-    └── test_cc_check.py           # ✅ 44 个单元测试
 ```
 
 ---
 
-## 🔒 安全设计
+## 🔬 到底检测了什么？
 
-<table>
-<tr>
-<td>🔑</td>
-<td><strong>零硬编码凭据</strong></td>
-<td>所有路径通过 <code>Path.home()</code> 动态推导</td>
-</tr>
-<tr>
-<td>🔏</td>
-<td><strong>输出脱敏</strong></td>
-<td><code>redact_text()</code> 过滤 SSH 凭据、订阅链接等敏感值</td>
-</tr>
-<tr>
-<td>🛡️</td>
-<td><strong>无 Shell 注入</strong></td>
-<td><code>subprocess.run(cwd=)</code> 代替字符串拼接</td>
-</tr>
-<tr>
-<td>👁️</td>
-<td><strong>--dry-run</strong></td>
-<td>所有修复命令支持预览模式</td>
-</tr>
-<tr>
-<td>⚠️</td>
-<td><strong>安全边界</strong></td>
-<td>系统语言、输入法、hosts 文件只报告不自动修改</td>
-</tr>
-</table>
+CC-Check 的审计矩阵涵盖 11 个细分领域，精准打击常见风控检测锚点。
+
+### 🔴 高危信号（直接触发风控封号）
+
+*   **中国 ISP DNS 劫持**：通过 Google/Cloudflare DNS whoami 深度校验。
+*   **低质量伪装 IP**：5 大权威渠道（ipinfo / proxycheck 等）交叉识别机房 IP 与伪住宅 IP。
+*   **时区与语言错位**：检测本地系统环境与代理出口目标地理位置的冲突。
+*   **网络侧漏**：公网 IP 连通性、多源 IP 归属一致性校验、IPv6 裸连侧漏。
+
+### 🟡 中危信号（间接暴露出境路径）
+
+*   **包管理器国内源**：扫描并修复 `npm` / `pip` / `brew` 中的 Taobao、Tuna 等镜像。
+*   **开发生态镜像**：检测 `GOPROXY`、Docker `daemon.json` 中的中国源加速配置。
+*   **代码托管痕迹**：扫描 Git Remote 配置中的国内托管平台（Gitee、Coding 等）。
+
+### 🟢 低危指纹（潜在的大数据关联）
+
+*   **工具链本地化**：VS Code 的中文 Locale 检测、系统附加的非原生中文字体指纹。
+*   **历史连接脚印**：扫描 SSH `known_hosts` 中指向国内服务器的连接历史。
+*   **代理客户端状态**：Clash TUN 虚拟网卡状态、进程检测以及 DNS 加固标记。
 
 ---
 
-## 🧪 测试
+## 🛠 一键修复与防护能力
 
-```bash
-# 运行全部 44 个单元测试
-python -m unittest discover -s tests -v
+只需执行 `python scripts/cc_check.py fix-local`，工具将为你解决下述全部问题。
 
-# CI: macOS + Linux + Windows × Python 3.10/3.11/3.12 = 9 矩阵
-# 参见 .github/workflows/test.yml
+| 防护层级 | macOS | Linux | Windows | 解决的痛点 |
+| :--- | :--- | :--- | :--- | :--- |
+| **🌐 静态 DNS 锁定** | `networksetup` + `scutil` | `nmcli` + `ignore-auto` | `netsh static` | 免疫底层网络环境 DHCP 强推的国内 DNS |
+| **⏱️ DNS 动态守护进程** | LaunchAgent (15s) | systemd timer (15s) | Task Scheduler (60s) | 防止企业级网络软件或 VPN 客户端暴力篡改 |
+| **🐚 Shell 变量清洗** | `.zshrc` / `.bashrc` | `.bashrc` / `.zshrc` | PowerShell Profile | 抹除终端里可能泄露的 `TZ` / `LANG` 痕迹 |
+| **📦 镜像源修正** | `npm` / `pip` / `brew` | `npm` / `pip` / `brew` | `npm` / `pip` | 自动恢复官方海外源，掐断国内请求特征 |
+
+> **DNS 三层立体防护解析**：路由器会不停地通过 DHCP 强推下发运营商 DNS (如 114) 或代理网关。CC-Check 会：通过底层网络命令锁定静态 DNS；创建最高优先级系统配置阻断修改；部署常驻守护进程检测微秒级漂移。**真正实现一劳永逸。**
+
+---
+
+## 📊 计分评级系统
+
+量化环境的脆弱程度，总分 100 分。
+
+```text
+╔══════════════════════════════════════════════════════════╗
+║   CC-Check Score:  100 / 100    Grade: A+    (100.0%)    ║
+╠══════════════════════════════════════════════════════════╣
+║   ip-quality     30/30   ██████████████████████  100.0%  ║
+║   system         21/21   ██████████████████████  100.0%  ║
+║   dns            15/15   ██████████████████████  100.0%  ║
+║   network        10/10   ██████████████████████  100.0%  ║
+║   ...                                                    ║
+╚══════════════════════════════════════════════════════════╝
 ```
 
----
-
-## 📋 设计边界 — 不会自动修复的项
-
-| 检测项 | 原因 |
-|-------:|------|
-| 中文输入法 | 双语用户合理使用 |
-| 系统语言 | 全局修改风险过高 |
-| 度量单位 / 时间格式 | 系统级设置，不适合自动改 |
-| Shell 历史 | 历史数据，不应删除 |
-| /etc/hosts | 修改风险较高 |
-| VS Code locale | 用户偏好 |
-| SSH known_hosts | 可能合法连接中国服务器 |
+*   A+ (95~100): 🟢 极其安全，随便用
+*   B (80~89): 🟡 比较安全，但有已知短板
+*   D (60~69): 🔴 极度危险，极易被标记
+*   F (<60): ⛔ 裸奔状态，立刻停止调用 API
 
 ---
 
-## 🤝 贡献
+## 🔒 你必须知道的安全边界
 
-欢迎 PR 和 Issue！
+作为一个具有高级系统修改权限的安全脚本，CC-Check 坚守以下底线：
 
-<table>
-<tr>
-<td align="center">🐧<br><strong>Linux</strong><br><sub>新发行版适配验证</sub></td>
-<td align="center">🪟<br><strong>Windows</strong><br><sub>修复逻辑实测</sub></td>
-<td align="center">🔌<br><strong>VPN 适配器</strong><br><sub>新项目结构支持</sub></td>
-<td align="center">🌐<br><strong>IP 质量</strong><br><sub>新检测渠道集成</sub></td>
-</tr>
-</table>
+1. **绝对隐私**：不含任何硬编码秘钥，支持脱敏过滤（`redact_text`）。
+2. **无注入**：全面采用安全的 `subprocess.run(cwd=)` 而非危险的壳层拼接。
+3. **只读保护**：提供完全无损的 `--dry-run` 实况预览。
+4. **人工界限**：系统级别的危险操作（如替换全局中文显示语言、全局删改 Hosts、清除输入法）只会报警提示，**不会**替用户自动修改。
 
 ---
+
+## 🤝 参与项目
+
+我们非常欢迎各位提交 PR 共同维护这份安全基线：
+
+*   🐧 **Linux**：各大冷门发行版修复逻辑的边界兼容验证
+*   🪟 **Windows**：PowerShell 执行策略与注册表修复实测
+*   🌐 **IP 评价体系**：引入更新、更准的 IP 风险大数据接口检测
 
 ## 📄 License
 
-[MIT](LICENSE) © [Hsiangpo](https://github.com/Hsiangpo)
-
----
-
-<div align="center">
-
-<sub>**CC-Check** — 让 API 风控无从下手</sub>
-
-<sub>Built with ❤️ by [@Hsiangpo](https://github.com/Hsiangpo)</sub>
-
-</div>
+[MIT License](LICENSE) © [Hsiangpo](https://github.com/Hsiangpo)

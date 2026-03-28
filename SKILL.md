@@ -15,8 +15,19 @@ Current reality:
 - Linux and Windows have partial inspection coverage
 - VPN project checks work only for supported project layouts, otherwise they cleanly skip
 
+## ⛔ Pre-Login Requirement
+
+**CC-Check 必须在登录 Claude / Claude App / Claude Code 之前运行。**
+
+这不是登录后的自检工具。启动 Claude 产品前，系统环境必须已经通过审计。登录后再检测意味着你已经带着泄露风险完成了一次连接——风控系统可能已经记录了你的环境指纹。
+
+正确顺序：
+1. 运行 `cc_check.py inspect` → 确认 A+ 或修复到 A+
+2. **然后**启动 Claude / Claude Code / Claude App
+
 ## When to Use
 
+- **首次启动前**: 新机器 / 新节点 / 新环境，登录 Claude 前必须先跑一遍
 - Claude Code starts failing after proxy, DNS, or locale changes
 - A new machine needs to be aligned with the target VPN environment
 - Clash Verge shows suspicious DNS values such as `114.114.114.114`

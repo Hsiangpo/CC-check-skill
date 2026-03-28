@@ -87,6 +87,7 @@ python scripts/cc_check.py fix-local --allow-shell-history-cleanup
 python scripts/cc_check.py fix-local --allow-rime-install --allow-ime-removal
 
 # 浏览器泄露检查（默认自动探测 Playwright，失败则回退为手工清单）
+# 可自动化项：JS 时区/语言、WebRTC、浏览器出口 IP、字体、Canvas、WebGL、TLS 页面
 python scripts/cc_check.py browser-leaks --json
 
 # 强制关闭自动化，仅输出 Python 基线 + 手工清单

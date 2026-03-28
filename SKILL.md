@@ -213,7 +213,7 @@ Do not promise full parity across platforms unless the implementation actually h
 
 ## Browser Leak Detection
 
-The `browser-leaks` subcommand now runs **Python-level baseline checks first**, then **optionally auto-enables Playwright** when the current Node environment already has that package available. In auto mode it can collect browser-side WebRTC / JavaScript runtime / IP / font signals; tests that are not automated yet remain in the manual checklist. If Playwright is unavailable, the command cleanly falls back to the original manual checklist without failing.
+The `browser-leaks` subcommand now runs **Python-level baseline checks first**, then **optionally auto-enables Playwright** when the current Node environment already has that package available. In auto mode it can collect browser-side WebRTC / JavaScript runtime / browser egress IP / font / Canvas / WebGL / TLS page signals, and it also compares browser egress with the Python baseline egress. Tests that are not automated yet remain in the manual checklist. If Playwright is unavailable, the command cleanly falls back to the original manual checklist without failing.
 
 ## Architecture
 

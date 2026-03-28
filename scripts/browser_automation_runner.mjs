@@ -179,6 +179,21 @@ async function collectCanvas(page) {
   };
 }
 
+async function collectWebGl(page) {
+  await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
+  return page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) {
+      return { vendor: '', renderer: '' };
+    }
+    const debug = gl.getExtension('WEBGL_debug_renderer_info');
+    const vendor = debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : '';
+    const renderer = debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : '';
+    return { vendor: vendor || '', renderer: renderer || '' };
+  });
+}
+
 async function collectTlsPage(page) {
   await page.goto('https://browserleaks.com/tls', { waitUntil: 'domcontentloaded', timeout: 20000 });
   const text = await page.locator('body').innerText();
@@ -199,6 +214,7 @@ async function main() {
     ['ip', collectBrowserIp],
     ['fonts', collectFonts],
     ['canvas', collectCanvas],
+    ['webgl', collectWebGl],
     ['tls', collectTlsPage],
   ];
 

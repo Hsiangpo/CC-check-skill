@@ -224,6 +224,16 @@ BROWSER_TESTS = [
         "js_extract": None,
     },
     {
+        "test": "webgl",
+        "name": "WebGL Fingerprinting",
+        "url": "https://browserleaks.com/webgl",
+        "critical": False,
+        "description": "检测 WebGL vendor/renderer 是否暴露软件渲染或异常显卡信息",
+        "pass_criteria": "Vendor/Renderer 与常规图形栈一致，不出现 SwiftShader/llvmpipe/Software",
+        "fail_indicators": ["SwiftShader", "llvmpipe", "Software Renderer"],
+        "js_extract": None,
+    },
+    {
         "test": "tls",
         "name": "TLS Client Test",
         "url": "https://browserleaks.com/tls",
@@ -450,6 +460,31 @@ def analyze_canvas(data: dict[str, Any]) -> list[BrowserFinding]:
     return findings
 
 
+def analyze_webgl(data: dict[str, Any]) -> list[BrowserFinding]:
+    """分析 WebGL 指纹中的 vendor 与 renderer。"""
+    findings: list[BrowserFinding] = []
+    vendor = str(data.get("vendor", "")).strip()
+    renderer = str(data.get("renderer", "")).strip()
+    lower_vendor = vendor.lower()
+    lower_renderer = renderer.lower()
+
+    if not vendor:
+        findings.append(BrowserFinding("webgl", "webgl-vendor", "skip", "WebGL vendor unavailable"))
+    elif any(token in lower_vendor for token in ("google", "mesa", "llvmpipe")):
+        findings.append(BrowserFinding("webgl", "webgl-vendor", "warn", f"WebGL vendor looks generic: {vendor}"))
+    else:
+        findings.append(BrowserFinding("webgl", "webgl-vendor", "pass", f"WebGL vendor: {vendor}"))
+
+    software_tokens = ("swiftshader", "llvmpipe", "software", "basic render", "subzero")
+    if not renderer:
+        findings.append(BrowserFinding("webgl", "webgl-renderer", "skip", "WebGL renderer unavailable"))
+    elif any(token in lower_renderer for token in software_tokens):
+        findings.append(BrowserFinding("webgl", "webgl-renderer", "fail", f"WebGL renderer looks software-based: {renderer}"))
+    else:
+        findings.append(BrowserFinding("webgl", "webgl-renderer", "pass", f"WebGL renderer: {renderer}"))
+    return findings
+
+
 def analyze_tls_page(data: dict[str, Any]) -> list[BrowserFinding]:
     """分析浏览器 TLS 检测页面文本。"""
     findings: list[BrowserFinding] = []
@@ -479,6 +514,46 @@ def analyze_tls_page(data: dict[str, Any]) -> list[BrowserFinding]:
         f"Legacy TLS enabled: {', '.join(legacy_hits)}" if legacy_hits else "Legacy TLS 1.0/1.1 not detected",
     ))
     return findings
+
+
+def _extract_consensus_ip(findings: list[BrowserFinding]) -> str:
+    """从 Python 基线 finding 中提取共识出口 IP。"""
+    for finding in findings:
+        if finding.key != "multi-endpoint-consistency":
+            continue
+        for detail in finding.details:
+            if ":" not in detail:
+                continue
+            _, value = detail.split(":", 1)
+            ip = value.strip()
+            if ip:
+                return ip
+        match = re.search(r"IP:\s*([0-9a-fA-F:\.]+)$", finding.summary)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def compare_browser_and_python_egress(python_findings: list[BrowserFinding], browser_ip_data: dict[str, Any]) -> BrowserFinding | None:
+    """比较浏览器出口 IP 与 Python 基线出口是否一致。"""
+    python_ip = _extract_consensus_ip(python_findings)
+    endpoints = browser_ip_data.get("endpoints", browser_ip_data if isinstance(browser_ip_data, dict) else {})
+    browser_ips = {str(value).strip() for value in endpoints.values() if str(value).strip()}
+    if not python_ip or not browser_ips:
+        return None
+    if len(browser_ips) == 1 and python_ip in browser_ips:
+        return BrowserFinding(
+            "ip",
+            "browser-python-egress-alignment",
+            "pass",
+            f"Browser egress matches Python baseline: {python_ip}",
+        )
+    return BrowserFinding(
+        "ip",
+        "browser-python-egress-alignment",
+        "fail",
+        f"Browser egress differs from Python baseline: python={python_ip} browser={', '.join(sorted(browser_ips))}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +617,7 @@ def run_playwright_automation() -> dict[str, Any]:
         "ip": analyze_browser_ip,
         "fonts": analyze_fonts,
         "canvas": analyze_canvas,
+        "webgl": analyze_webgl,
         "tls": analyze_tls_page,
     }
     for test_name in executed_tests:
@@ -557,6 +633,7 @@ def run_playwright_automation() -> dict[str, Any]:
         "executed_tests": executed_tests,
         "errors": payload.get("errors", []),
         "ok": payload.get("ok", False),
+        "results": results,
     }
 
 
@@ -584,6 +661,9 @@ def run_browser_checks(automation: str = "auto") -> tuple[list[BrowserFinding], 
         return findings, meta
 
     findings.extend(automation_result.get("findings", []))
+    egress_alignment = compare_browser_and_python_egress(findings, automation_result.get("results", {}).get("ip", {}))
+    if egress_alignment is not None:
+        findings.append(egress_alignment)
     meta.update({
         "mode": "playwright-automation-plus-python-baseline",
         "automation_used": True,

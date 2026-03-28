@@ -808,7 +808,7 @@ class TestBrowserLeaksReporting(unittest.TestCase):
         self.assertTrue(payload["automation_used"])
         self.assertEqual(payload["provider"], "playwright")
         self.assertEqual(payload["executed_tests"], ["javascript", "webrtc"])
-        self.assertEqual([item["test"] for item in payload["manual"]], ["ip", "fonts", "canvas", "tls"])
+        self.assertEqual([item["test"] for item in payload["manual"]], ["ip", "fonts", "canvas", "webgl", "tls"])
 
     def test_build_report_payload_removes_canvas_and_tls_when_automated(self):
         findings = [
@@ -825,7 +825,7 @@ class TestBrowserLeaksReporting(unittest.TestCase):
 
         payload = bleaks.build_report_payload(findings, meta)
 
-        self.assertEqual([item["test"] for item in payload["manual"]], ["ip", "fonts"])
+        self.assertEqual([item["test"] for item in payload["manual"]], ["ip", "fonts", "webgl"])
 
     def test_analyze_canvas_reports_fingerprint_and_stability(self):
         findings = bleaks.analyze_canvas({
@@ -846,6 +846,36 @@ class TestBrowserLeaksReporting(unittest.TestCase):
         self.assertEqual(findings[0].status, "pass")
         self.assertEqual(findings[1].key, "tls-browser-legacy")
         self.assertEqual(findings[1].status, "fail")
+
+    def test_analyze_webgl_flags_software_renderer(self):
+        findings = bleaks.analyze_webgl({
+            "vendor": "Google Inc. (Google)",
+            "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)))",
+        })
+
+        self.assertEqual(findings[0].key, "webgl-vendor")
+        self.assertEqual(findings[0].status, "warn")
+        self.assertEqual(findings[1].key, "webgl-renderer")
+        self.assertEqual(findings[1].status, "fail")
+
+    def test_compare_browser_and_python_egress_detects_mismatch(self):
+        python_findings = [
+            bleaks.BrowserFinding(
+                "ip",
+                "multi-endpoint-consistency",
+                "pass",
+                "All 4 endpoints return same IP: 1.1.1.1",
+                ["ipify: 1.1.1.1"],
+            ),
+        ]
+
+        finding = bleaks.compare_browser_and_python_egress(python_findings, {
+            "endpoints": {"ipify": "2.2.2.2", "httpbin": "2.2.2.2"},
+        })
+
+        self.assertIsNotNone(finding)
+        self.assertEqual(finding.key, "browser-python-egress-alignment")
+        self.assertEqual(finding.status, "fail")
 
     @patch.object(bleaks, "run_python_checks")
     @patch.object(bleaks, "detect_playwright_automation")
@@ -886,6 +916,7 @@ class TestBrowserLeaksReporting(unittest.TestCase):
             ],
             "executed_tests": ["javascript"],
             "errors": [],
+            "results": {},
         }
 
         findings, meta = bleaks.run_browser_checks()

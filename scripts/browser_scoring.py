@@ -24,6 +24,14 @@ WEIGHTS: dict[str, int] = {
     "tls-browser-legacy": 4,
 }
 
+BLOCKERS: set[str] = {
+    "webrtc-leak",
+    "webrtc-local-ip",
+    "browser-python-egress-alignment",
+    "js-locale",
+    "js-timezone",
+}
+
 
 @dataclass
 class BrowserGroupScore:
@@ -40,6 +48,8 @@ class BrowserScoreReport:
     percentage: float
     grade: str
     groups: list[BrowserGroupScore]
+    blocked: bool = False
+    blocker_reasons: list[str] | None = None
 
 
 def _grade(pct: float) -> str:
@@ -70,6 +80,7 @@ def compute_browser_score(findings: list[Any]) -> BrowserScoreReport:
     """根据浏览器自动化 findings 计算百分制得分。"""
     group_earned: dict[str, float] = {}
     group_max: dict[str, int] = {}
+    blocker_reasons: list[str] = []
 
     for finding in findings:
         weight = WEIGHTS.get(finding.key, 0)
@@ -78,6 +89,8 @@ def compute_browser_score(findings: list[Any]) -> BrowserScoreReport:
         group = getattr(finding, "test", "other")
         group_max[group] = group_max.get(group, 0) + weight
         group_earned[group] = group_earned.get(group, 0.0) + _earned_points(getattr(finding, "status", "fail"), weight)
+        if finding.key in BLOCKERS and getattr(finding, "status", "") == "fail":
+            blocker_reasons.append(f"{finding.key}: {getattr(finding, 'summary', '')}")
 
     total_max = sum(group_max.values())
     total_earned = sum(group_earned.values())
@@ -96,6 +109,8 @@ def compute_browser_score(findings: list[Any]) -> BrowserScoreReport:
         percentage=percentage,
         grade=_grade(percentage),
         groups=groups,
+        blocked=bool(blocker_reasons),
+        blocker_reasons=blocker_reasons or None,
     )
 
 
@@ -106,6 +121,8 @@ def build_browser_score_payload(report: BrowserScoreReport) -> dict[str, Any]:
         "max_score": report.max_score,
         "percentage": report.percentage,
         "grade": report.grade,
+        "blocked": report.blocked,
+        "blocker_reasons": report.blocker_reasons or [],
         "groups": [
             {
                 "group": group.group,

@@ -386,7 +386,7 @@ cc-check/
 ## 🧪 测试
 
 ```bash
-# 运行全部 81 个单元测试
+# 运行全部 80 个单元测试
 python -m unittest discover -s tests -v
 
 # CI: macOS + Linux + Windows × Python 3.10/3.11/3.12 = 9 矩阵

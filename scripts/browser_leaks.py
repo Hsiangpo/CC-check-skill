@@ -845,6 +845,10 @@ def print_browser_report(findings: list[BrowserFinding], report_meta: dict[str, 
         if report_meta["browser_score"]:
             score = report_meta["browser_score"]
             print(f"  🧮 Browser Score: {score['total_score']}/{score['max_score']}  Grade: {score['grade']}  ({score['percentage']}%)")
+            if score.get("blocked"):
+                print("  ⛔ Browser Blocked:")
+                for reason in score.get("blocker_reasons", []):
+                    print(f"     - {reason}")
         if report_meta["artifact_path"]:
             print(f"  📁 Artifact: {report_meta['artifact_path']}")
     elif report_meta["reason"]:

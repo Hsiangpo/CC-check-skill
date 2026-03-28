@@ -58,6 +58,7 @@ def detect_playwright_support(scripts_dir: Path) -> dict[str, Any]:
     node_path = shutil.which("node")
     runner_path = scripts_dir / "browser_automation_runner.mjs"
     module_specifier = resolve_playwright_module_specifier(scripts_dir)
+    bootstrap_hint = "run browser_bootstrap.py install to prepare local Playwright"
     if not node_path:
         return {
             "available": False,
@@ -95,7 +96,7 @@ def detect_playwright_support(scripts_dir: Path) -> dict[str, Any]:
         return {
             "available": False,
             "provider": "playwright",
-            "reason": reason,
+            "reason": f"{reason}; {bootstrap_hint}",
             "runner": str(runner_path),
         }
     return {

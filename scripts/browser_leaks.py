@@ -21,6 +21,7 @@ from typing import Any
 from urllib.request import urlopen
 
 from browser_automation import detect_playwright_support, execute_playwright_runner
+from browser_scoring import build_browser_score_payload, compute_browser_score
 
 
 # ---------------------------------------------------------------------------
@@ -578,6 +579,7 @@ def _default_report_meta() -> dict[str, Any]:
         "reason": "",
         "executed_tests": [],
         "errors": [],
+        "browser_score": None,
     }
 
 
@@ -664,10 +666,15 @@ def run_browser_checks(automation: str = "auto") -> tuple[list[BrowserFinding], 
     egress_alignment = compare_browser_and_python_egress(findings, automation_result.get("results", {}).get("ip", {}))
     if egress_alignment is not None:
         findings.append(egress_alignment)
+    browser_only_findings = [
+        finding for finding in findings
+        if finding.key == "browser-python-egress-alignment" or finding.test in executed_tests
+    ]
     meta.update({
         "mode": "playwright-automation-plus-python-baseline",
         "automation_used": True,
         "executed_tests": executed_tests,
+        "browser_score": build_browser_score_payload(compute_browser_score(browser_only_findings)),
     })
     return findings, meta
 
@@ -693,6 +700,7 @@ def build_report_payload(findings: list[BrowserFinding], report_meta: dict[str, 
         "reason": report_meta["reason"],
         "executed_tests": report_meta["executed_tests"],
         "errors": report_meta["errors"],
+        "browser_score": report_meta["browser_score"],
         "automated": automated,
         "manual": _manual_checklist(report_meta["executed_tests"]),
     }
@@ -721,6 +729,9 @@ def print_browser_report(findings: list[BrowserFinding], report_meta: dict[str, 
         executed = ", ".join(report_meta["executed_tests"]) or "none"
         print("\n" + "-" * 50)
         print(f"  🤖 Automation: {report_meta['provider']} ({executed})")
+        if report_meta["browser_score"]:
+            score = report_meta["browser_score"]
+            print(f"  🧮 Browser Score: {score['total_score']}/{score['max_score']}  Grade: {score['grade']}  ({score['percentage']}%)")
     elif report_meta["reason"]:
         print("\n" + "-" * 50)
         print(f"  ℹ️  Automation unavailable: {report_meta['reason']}")

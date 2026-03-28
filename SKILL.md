@@ -103,6 +103,9 @@ python3 <path>/scripts/cc_check.py browser-leaks --automation off
 python3 <path>/scripts/browser_bootstrap.py status
 python3 <path>/scripts/browser_bootstrap.py install --dry-run
 
+# browser-leaks JSON includes browser_score when automation runs
+# browser_bootstrap status includes tools/proxy_env/install_commands/recommendations
+
 # With overrides
 python3 <path>/scripts/cc_check.py inspect \
   --target-timezone America/Los_Angeles \
@@ -217,7 +220,7 @@ Do not promise full parity across platforms unless the implementation actually h
 
 ## Browser Leak Detection
 
-The `browser-leaks` subcommand now runs **Python-level baseline checks first**, then **optionally auto-enables Playwright** when the current Node environment already has that package available. In auto mode it can collect browser-side WebRTC / JavaScript runtime / browser egress IP / font / Canvas / WebGL / TLS page signals, and it also compares browser egress with the Python baseline egress. Tests that are not automated yet remain in the manual checklist. If Playwright is unavailable, the command cleanly falls back to the original manual checklist without failing.
+The `browser-leaks` subcommand now runs **Python-level baseline checks first**, then **optionally auto-enables Playwright** when the current Node environment already has that package available. In auto mode it can collect browser-side WebRTC / JavaScript runtime / browser egress IP / font / Canvas / WebGL / TLS page signals, compare browser egress with the Python baseline egress, and emit a dedicated `browser_score` summary. Tests that are not automated yet remain in the manual checklist. If Playwright is unavailable, the command cleanly falls back to the original manual checklist without failing and the bootstrap helper reports local install commands plus proxy/tool diagnostics.
 
 ## Architecture
 
@@ -227,6 +230,7 @@ scripts/
 ├── browser_automation.py  # Playwright capability detection & subprocess bridge
 ├── browser_automation_runner.mjs # Browser-side data collector
 ├── browser_bootstrap.py   # Optional local Playwright bootstrap helper
+├── browser_scoring.py     # Browser automation scoring
 ├── browser_leaks.py   # Browser leak detection orchestration
 ├── ip_quality.py      # Multi-channel IP quality assessment
 ├── platform_ops.py    # Cross-platform abstraction layer (~1500 lines)

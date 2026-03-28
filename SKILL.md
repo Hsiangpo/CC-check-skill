@@ -99,6 +99,10 @@ python3 <path>/scripts/cc_check.py browser-leaks --json
 # Disable browser automation and keep manual checklist only
 python3 <path>/scripts/cc_check.py browser-leaks --automation off
 
+# Prepare optional local Playwright environment
+python3 <path>/scripts/browser_bootstrap.py status
+python3 <path>/scripts/browser_bootstrap.py install --dry-run
+
 # With overrides
 python3 <path>/scripts/cc_check.py inspect \
   --target-timezone America/Los_Angeles \
@@ -222,6 +226,7 @@ scripts/
 ├── cc_check.py        # Main orchestrator & CLI (~1100 lines)
 ├── browser_automation.py  # Playwright capability detection & subprocess bridge
 ├── browser_automation_runner.mjs # Browser-side data collector
+├── browser_bootstrap.py   # Optional local Playwright bootstrap helper
 ├── browser_leaks.py   # Browser leak detection orchestration
 ├── ip_quality.py      # Multi-channel IP quality assessment
 ├── platform_ops.py    # Cross-platform abstraction layer (~1500 lines)

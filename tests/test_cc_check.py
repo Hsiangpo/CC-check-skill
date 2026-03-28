@@ -27,6 +27,8 @@ from ip_quality import (
 )
 import cc_check
 import browser_leaks as bleaks
+import browser_automation as bauto
+import browser_bootstrap as bboot
 import platform_ops as plat
 
 
@@ -926,6 +928,33 @@ class TestBrowserLeaksReporting(unittest.TestCase):
         self.assertTrue(meta["automation_supported"])
         self.assertTrue(meta["automation_used"])
         self.assertEqual(meta["executed_tests"], ["javascript"])
+
+
+class TestBrowserAutomationHelpers(unittest.TestCase):
+    """验证浏览器自动化依赖解析与引导命令。"""
+
+    def test_resolve_playwright_module_prefers_local_browser_env(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir()
+            local_module = root / ".cc-check-browser" / "node_modules" / "playwright" / "index.js"
+            local_module.parent.mkdir(parents=True)
+            local_module.write_text("module.exports = {};\n", encoding="utf-8")
+
+            specifier = bauto.resolve_playwright_module_specifier(scripts_dir)
+
+            self.assertEqual(specifier, local_module.resolve().as_uri())
+
+    def test_build_bootstrap_commands_targets_local_env(self):
+        env_dir = Path("/tmp/demo/.cc-check-browser")
+
+        commands = bboot.build_install_commands(env_dir)
+
+        self.assertEqual(commands[0][:2], ["npm", "install"])
+        self.assertIn("playwright", commands[0])
+        self.assertEqual(commands[1][:3], ["npx", "playwright", "install"])
+        self.assertEqual(commands[1][-1], "chromium")
 
 
 class TestExtendedInspectHelpers(unittest.TestCase):

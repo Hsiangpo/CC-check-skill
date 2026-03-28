@@ -93,6 +93,10 @@ python scripts/cc_check.py browser-leaks --json
 # 强制关闭自动化，仅输出 Python 基线 + 手工清单
 python scripts/cc_check.py browser-leaks --automation off
 
+# 准备本地 Playwright 环境（可选）
+python scripts/browser_bootstrap.py status
+python scripts/browser_bootstrap.py install --dry-run
+
 # 自定义目标参数
 python scripts/cc_check.py inspect \
   --target-timezone America/Los_Angeles \
@@ -332,7 +336,8 @@ cc-check/
 │   ├── vpn_adapter.py             # 🔌 VPN 项目适配器
 │   ├── browser_leaks.py           # 🔍 浏览器泄露检测编排
 │   ├── browser_automation.py      # 🤖 Playwright 能力探测与执行
-│   └── browser_automation_runner.mjs # 🌐 浏览器数据采集 runner
+│   ├── browser_automation_runner.mjs # 🌐 浏览器数据采集 runner
+│   └── browser_bootstrap.py       # 📦 本地 Playwright 引导脚本
 └── tests/
     └── test_cc_check.py           # ✅ 63 个单元测试
 ```

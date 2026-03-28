@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
 
 const CHINA_FONTS = [
   'SimSun',
@@ -140,6 +139,25 @@ function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
 }
 
+async function launchBrowser(chromium) {
+  const attempts = [
+    { headless: true, channel: 'chrome' },
+    { headless: true, channel: 'msedge' },
+    { headless: true },
+  ];
+  let lastError = null;
+
+  for (const options of attempts) {
+    try {
+      return await chromium.launch(options);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Unable to launch browser');
+}
+
 async function collectCanvas(page) {
   await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
   const payload = await page.evaluate(() => {
@@ -201,7 +219,14 @@ async function collectTlsPage(page) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
+  const playwrightSpecifier = process.env.CC_CHECK_PLAYWRIGHT_MODULE || 'playwright';
+  const playwrightModule = await import(playwrightSpecifier);
+  const chromium = playwrightModule.chromium || playwrightModule.default?.chromium;
+  if (!chromium) {
+    throw new Error(`Unable to load chromium from ${playwrightSpecifier}`);
+  }
+
+  const browser = await launchBrowser(chromium);
   const context = await browser.newContext();
   const page = await context.newPage();
   const results = {};

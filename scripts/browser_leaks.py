@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import ssl
 import socket
 from dataclasses import dataclass, field
@@ -408,6 +409,78 @@ def analyze_fonts(font_data: Any) -> list[BrowserFinding]:
     return findings
 
 
+def analyze_canvas(data: dict[str, Any]) -> list[BrowserFinding]:
+    """分析 Canvas 指纹采集结果。"""
+    findings: list[BrowserFinding] = []
+    fingerprint = str(data.get("fingerprintHash", "")).strip()
+    secondary = str(data.get("secondaryHash", "")).strip()
+    urls_match = bool(data.get("dataUrlsMatch"))
+
+    if fingerprint:
+        findings.append(BrowserFinding(
+            "canvas",
+            "canvas-fingerprint",
+            "pass",
+            f"Canvas fingerprint collected: {fingerprint[:16]}...",
+        ))
+    else:
+        findings.append(BrowserFinding(
+            "canvas",
+            "canvas-fingerprint",
+            "warn",
+            "Canvas fingerprint could not be collected",
+        ))
+
+    if fingerprint and secondary:
+        stable = urls_match and fingerprint == secondary
+        findings.append(BrowserFinding(
+            "canvas",
+            "canvas-fingerprint-stability",
+            "pass" if stable else "warn",
+            "Canvas fingerprint is stable within the current run" if stable else "Canvas fingerprint drift detected within the current run",
+            [f"primary={fingerprint[:16]}", f"secondary={secondary[:16]}"],
+        ))
+    else:
+        findings.append(BrowserFinding(
+            "canvas",
+            "canvas-fingerprint-stability",
+            "skip",
+            "Canvas stability check unavailable",
+        ))
+    return findings
+
+
+def analyze_tls_page(data: dict[str, Any]) -> list[BrowserFinding]:
+    """分析浏览器 TLS 检测页面文本。"""
+    findings: list[BrowserFinding] = []
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return [
+            BrowserFinding("tls", "tls-browser-version", "skip", "Browser TLS page text unavailable"),
+            BrowserFinding("tls", "tls-browser-legacy", "skip", "Browser TLS legacy protocol check unavailable"),
+        ]
+
+    lower = text.lower()
+    if "tls 1.3 enabled" in lower or "tlsv1.3" in lower:
+        findings.append(BrowserFinding("tls", "tls-browser-version", "pass", "Browser TLS page reports TLS 1.3"))
+    elif "tls 1.2" in lower:
+        findings.append(BrowserFinding("tls", "tls-browser-version", "warn", "Browser TLS page did not confirm TLS 1.3"))
+    else:
+        findings.append(BrowserFinding("tls", "tls-browser-version", "warn", "Browser TLS version could not be confirmed"))
+
+    legacy_hits = []
+    for version in ("1.0", "1.1"):
+        if re.search(rf"tls\s*{re.escape(version)}\s*enabled", lower):
+            legacy_hits.append(version)
+    findings.append(BrowserFinding(
+        "tls",
+        "tls-browser-legacy",
+        "fail" if legacy_hits else "pass",
+        f"Legacy TLS enabled: {', '.join(legacy_hits)}" if legacy_hits else "Legacy TLS 1.0/1.1 not detected",
+    ))
+    return findings
+
+
 # ---------------------------------------------------------------------------
 # Run all Python-testable checks
 # ---------------------------------------------------------------------------
@@ -468,6 +541,8 @@ def run_playwright_automation() -> dict[str, Any]:
         "webrtc": analyze_webrtc,
         "ip": analyze_browser_ip,
         "fonts": analyze_fonts,
+        "canvas": analyze_canvas,
+        "tls": analyze_tls_page,
     }
     for test_name in executed_tests:
         analyzer = analyzers.get(test_name)

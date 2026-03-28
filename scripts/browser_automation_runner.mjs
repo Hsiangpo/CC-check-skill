@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 
 const CHINA_FONTS = [
@@ -135,6 +136,55 @@ async function collectFonts(page) {
   }, CHINA_FONTS);
 }
 
+function sha256(text) {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+async function collectCanvas(page) {
+  await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
+  const payload = await page.evaluate(() => {
+    const render = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 280;
+      canvas.height = 80;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return '';
+      }
+      ctx.textBaseline = 'top';
+      ctx.font = "16px 'Arial'";
+      ctx.fillStyle = '#f60';
+      ctx.fillRect(10, 10, 120, 24);
+      ctx.fillStyle = '#069';
+      ctx.fillText('cc-check-canvas', 14, 14);
+      ctx.strokeStyle = 'rgba(120, 20, 160, 0.8)';
+      ctx.beginPath();
+      ctx.arc(210, 34, 18, 0, Math.PI * 2);
+      ctx.stroke();
+      return canvas.toDataURL();
+    };
+    const primary = render();
+    const secondary = render();
+    return {
+      primary,
+      secondary,
+      dataUrlsMatch: primary === secondary,
+    };
+  });
+
+  return {
+    fingerprintHash: payload.primary ? sha256(payload.primary) : '',
+    secondaryHash: payload.secondary ? sha256(payload.secondary) : '',
+    dataUrlsMatch: payload.dataUrlsMatch,
+  };
+}
+
+async function collectTlsPage(page) {
+  await page.goto('https://browserleaks.com/tls', { waitUntil: 'domcontentloaded', timeout: 20000 });
+  const text = await page.locator('body').innerText();
+  return { text };
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
@@ -148,6 +198,8 @@ async function main() {
     ['webrtc', collectWebRtc],
     ['ip', collectBrowserIp],
     ['fonts', collectFonts],
+    ['canvas', collectCanvas],
+    ['tls', collectTlsPage],
   ];
 
   for (const [name, task] of tasks) {

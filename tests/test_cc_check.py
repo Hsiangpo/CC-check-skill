@@ -810,6 +810,43 @@ class TestBrowserLeaksReporting(unittest.TestCase):
         self.assertEqual(payload["executed_tests"], ["javascript", "webrtc"])
         self.assertEqual([item["test"] for item in payload["manual"]], ["ip", "fonts", "canvas", "tls"])
 
+    def test_build_report_payload_removes_canvas_and_tls_when_automated(self):
+        findings = [
+            bleaks.BrowserFinding("canvas", "canvas-fingerprint", "pass", "Canvas fingerprint collected"),
+            bleaks.BrowserFinding("tls", "tls-browser-version", "pass", "Browser TLS page reports TLS 1.3"),
+        ]
+        meta = {
+            "mode": "playwright-automation-plus-python-baseline",
+            "automation_supported": True,
+            "automation_used": True,
+            "provider": "playwright",
+            "executed_tests": ["javascript", "webrtc", "canvas", "tls"],
+        }
+
+        payload = bleaks.build_report_payload(findings, meta)
+
+        self.assertEqual([item["test"] for item in payload["manual"]], ["ip", "fonts"])
+
+    def test_analyze_canvas_reports_fingerprint_and_stability(self):
+        findings = bleaks.analyze_canvas({
+            "fingerprintHash": "abc123",
+            "secondaryHash": "abc123",
+            "dataUrlsMatch": True,
+        })
+
+        self.assertEqual([item.key for item in findings], ["canvas-fingerprint", "canvas-fingerprint-stability"])
+        self.assertTrue(all(item.status == "pass" for item in findings))
+
+    def test_analyze_tls_page_flags_legacy_protocols(self):
+        findings = bleaks.analyze_tls_page({
+            "text": "TLS 1.3 Enabled\nTLS 1.0 Enabled\nTLS 1.1 Disabled",
+        })
+
+        self.assertEqual(findings[0].key, "tls-browser-version")
+        self.assertEqual(findings[0].status, "pass")
+        self.assertEqual(findings[1].key, "tls-browser-legacy")
+        self.assertEqual(findings[1].status, "fail")
+
     @patch.object(bleaks, "run_python_checks")
     @patch.object(bleaks, "detect_playwright_automation")
     def test_run_browser_checks_falls_back_when_playwright_unavailable(self, mock_detect, mock_python):

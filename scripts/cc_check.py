@@ -763,11 +763,14 @@ def collect_findings(ctx: Context, include_vpn: bool = True) -> list[Finding]:
     findings: list[Finding] = []
 
     # IP quality
+    # IP quality — emit sub-findings for granular scoring
     ip_q: dict[str, Any] | None = None
     if public_ip:
         ip_q = assess_ip_quality(public_ip, ctx.expected_ip_type)
-        findings.append(Finding("ip-quality", "classification", ip_q["status"],
-                                ip_q["summary"], ip_q["details"]))
+        # Emit individual sub-findings (ip-not-proxy, ip-not-hosting, etc.)
+        for sf in ip_q.get("sub_findings", []):
+            findings.append(Finding("ip-quality", sf["key"], sf["status"],
+                                    sf["summary"], ip_q["details"]))
 
     targets = build_target_profile(ctx, public_ip, ip_q)
 

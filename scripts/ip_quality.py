@@ -180,66 +180,122 @@ def assess_ip_quality(ip: str, expected_ip_type: str = "residential") -> dict[st
 
     details.append(f"whois: country={whois_country or '?'}")
 
-    # Classify
-    status = "pass"
-    summary = "IP quality looks acceptable"
-    recommendations: list[str] = []
-
+    # Classify — sub-finding granularity
     proxy_flag = str(proxy_data.get("proxy", "")).lower() == "yes" if isinstance(proxy_data, dict) else False
     ip_type = str(proxy_data.get("type", "")).lower() if isinstance(proxy_data, dict) else ""
     risk_score = int(proxy_data.get("risk", 0)) if isinstance(proxy_data, dict) else 0
     hosting = bool(ip_api.get("hosting")) if isinstance(ip_api, dict) and ip_api.get("status") == "success" else False
     api_proxy = bool(ip_api.get("proxy")) if isinstance(ip_api, dict) and ip_api.get("status") == "success" else False
 
-    # Hard fail: flagged as proxy/VPN/hosting
-    if proxy_flag or api_proxy or hosting:
-        status = "fail"
-        summary = f"IP is flagged as proxy/VPN/hosting by authority sources (type={ip_type}, risk={risk_score})"
-        recommendations.append(
-            f"当前 IP 被标记为 {ip_type or 'proxy/hosting'}。"
-            "请更换为真实住宅宽带 IP（如美国 Comcast/AT&T/Spectrum 家宽），"
-            "伪住宅（IDC 隧道包装）同样会被高敏感 API 识别。"
-        )
+    # Sub-finding 1: ip-not-proxy
+    if proxy_flag or api_proxy:
+        proxy_status = "fail"
+        proxy_summary = f"IP is flagged as proxy/VPN (type={ip_type}, risk={risk_score})"
+    else:
+        proxy_status = "pass"
+        proxy_summary = "IP not flagged as proxy/VPN"
 
-    # Residential type check
-    elif expected_ip_type == "residential":
+    # Sub-finding 2: ip-not-hosting
+    if hosting:
+        hosting_status = "fail"
+        hosting_summary = "IP is flagged as hosting/IDC"
+    else:
+        hosting_status = "pass"
+        hosting_summary = "IP not flagged as hosting/IDC"
+
+    # Sub-finding 3: ip-type-match
+    if expected_ip_type == "residential":
         if ip_type in BAD_IP_TYPES:
-            status = "fail"
-            summary = f"IP type is '{ip_type}', not residential"
-            recommendations.append("请更换为真实住宅宽带 IP，当前 IP 类型不符合要求。")
-        elif ip_type and ip_type not in GOOD_IP_TYPES:
-            status = "warn"
-            summary = f"IP type is '{ip_type}', not confidently residential"
-            recommendations.append("建议用更多权威渠道复核，必要时升级为真实住宅 IP。")
-        elif not ip_type:
-            status = "warn"
-            summary = "IP type could not be confidently classified"
-            recommendations.append("建议用更多渠道复核 IP 类型。")
+            type_status = "fail"
+            type_summary = f"IP type is '{ip_type}', not residential"
+        elif ip_type in GOOD_IP_TYPES:
+            type_status = "pass"
+            type_summary = f"IP type '{ip_type}' matches residential"
+        elif ip_type:
+            type_status = "warn"
+            type_summary = f"IP type '{ip_type}' not confidently residential"
+        else:
+            type_status = "warn"
+            type_summary = "IP type could not be classified"
+    else:
+        type_status = "pass"
+        type_summary = f"IP type check skipped (expected={expected_ip_type})"
 
-    # ISP sanity: check if ISP looks like real residential
+    # Sub-finding 4: ip-risk-score
+    if risk_score >= 66:
+        risk_status = "warn"
+        risk_summary = f"IP risk score is high ({risk_score}/100)"
+    elif risk_score >= 33:
+        risk_status = "warn"
+        risk_summary = f"IP risk score is moderate ({risk_score}/100)"
+    else:
+        risk_status = "pass"
+        risk_summary = f"IP risk score is low ({risk_score}/100)"
+
+    # Sub-finding 5: ip-geo-consistent
+    if country_code and whois_country and country_code != whois_country:
+        geo_status = "warn"
+        geo_summary = f"Geo mismatch: API country={country_code} vs whois country={whois_country}"
+    else:
+        geo_status = "pass"
+        geo_summary = "Geo/whois country consistent"
+
+    # ISP info (informational, appended to details)
     if isp_name and expected_ip_type == "residential":
         isp_lower = isp_name.lower()
         is_known_resi = any(resi in isp_lower for resi in US_RESIDENTIAL_ISPS)
-        if not is_known_resi and status == "pass":
-            # Not a known residential ISP, but not flagged either
+        if not is_known_resi:
             details.append(f"isp-check: '{isp_name}' is not a known US residential ISP")
 
-    # Risk score warning
-    if risk_score >= 66 and status != "fail":
-        status = "warn"
-        summary = f"IP risk score is high ({risk_score}/100)"
-        recommendations.append(f"风险评分 {risk_score}/100 偏高，建议更换更纯净的家宽节点。")
+    # Combined status for backward compat
+    all_statuses = [proxy_status, hosting_status, type_status, risk_status, geo_status]
+    if "fail" in all_statuses:
+        combined_status = "fail"
+    elif "warn" in all_statuses:
+        combined_status = "warn"
+    else:
+        combined_status = "pass"
 
-    # Cross-check country
-    if country_code and whois_country and country_code != whois_country:
-        if status == "pass":
-            status = "warn"
+    # Build recommendations
+    recommendations: list[str] = []
+    if proxy_status == "fail":
+        recommendations.append(
+            f"当前 IP 被标记为 {ip_type or 'proxy'}。"
+            "请更换为真实住宅宽带 IP（如美国 Comcast/AT&T/Spectrum 家宽），"
+            "伪住宅（IDC 隧道包装）同样会被高敏感 API 识别。"
+        )
+    if hosting_status == "fail":
+        recommendations.append("IP 归属于 IDC/Hosting 机房，建议更换为住宅节点。")
+    if type_status == "fail":
+        recommendations.append("请更换为真实住宅宽带 IP，当前 IP 类型不符合要求。")
+    if type_status == "warn":
+        recommendations.append("建议用更多权威渠道复核 IP 类型。")
+    if risk_status == "warn":
+        recommendations.append(f"风险评分 {risk_score}/100 偏高，建议更换更纯净的家宽节点。")
+    if geo_status == "warn":
         recommendations.append(f"geo country={country_code} vs whois country={whois_country}，建议人工复核。")
 
+    # Build summary for combined
+    if combined_status == "fail":
+        combined_summary = f"IP is flagged (proxy={proxy_flag}, hosting={hosting}, type={ip_type})"
+    elif combined_status == "warn":
+        combined_summary = f"IP quality uncertain (type={ip_type}, risk={risk_score})"
+    else:
+        combined_summary = "IP quality looks acceptable"
+
+    sub_findings = [
+        {"key": "ip-not-proxy", "status": proxy_status, "summary": proxy_summary},
+        {"key": "ip-not-hosting", "status": hosting_status, "summary": hosting_summary},
+        {"key": "ip-type-match", "status": type_status, "summary": type_summary},
+        {"key": "ip-risk-score", "status": risk_status, "summary": risk_summary},
+        {"key": "ip-geo-consistent", "status": geo_status, "summary": geo_summary},
+    ]
+
     return {
-        "status": status,
-        "summary": summary,
+        "status": combined_status,
+        "summary": combined_summary,
         "details": details + recommendations,
+        "sub_findings": sub_findings,
         "target_timezone": timezone,
         "target_locale": target_locale,
         "target_language": target_language,
@@ -250,3 +306,4 @@ def assess_ip_quality(ip: str, expected_ip_type: str = "residential") -> dict[st
         "risk_score": risk_score,
         "isp": isp_name,
     }
+

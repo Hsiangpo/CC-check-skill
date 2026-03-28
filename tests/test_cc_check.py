@@ -102,10 +102,10 @@ class TestComputeScore(unittest.TestCase):
         self.assertEqual(report.grade, "F")
 
     def test_warn_gives_70_percent(self):
-        """A single warn on a 30-point item should give 21 points."""
-        findings = [MockFinding("ip-quality", "classification", "warn")]
+        """A single warn on a 10-point item should give 7 points."""
+        findings = [MockFinding("ip-quality", "ip-not-proxy", "warn")]
         report = compute_score(findings)
-        self.assertEqual(report.total_score, 21)
+        self.assertEqual(report.total_score, 7)
 
     def test_skip_gives_50_percent(self):
         """Two skipped 1-point items should give 1 point total (2*0.5=1)."""
@@ -129,9 +129,13 @@ class TestComputeScore(unittest.TestCase):
     def test_mixed_statuses(self):
         """Mixed pass/warn/fail should compute correctly."""
         findings = [
-            MockFinding("ip-quality", "classification", "pass"),  # 30
-            MockFinding("dns", "dns-google", "warn"),             # 7 * 0.7 = 4.9
-            MockFinding("dns", "dns-cloudflare", "fail"),         # 0
+            MockFinding("ip-quality", "ip-not-proxy", "pass"),       # 10
+            MockFinding("ip-quality", "ip-not-hosting", "pass"),     # 8
+            MockFinding("ip-quality", "ip-type-match", "pass"),      # 5
+            MockFinding("ip-quality", "ip-risk-score", "pass"),      # 4
+            MockFinding("ip-quality", "ip-geo-consistent", "pass"),  # 3 = 30
+            MockFinding("dns", "dns-google", "warn"),                # 7 * 0.7 = 4.9
+            MockFinding("dns", "dns-cloudflare", "fail"),            # 0
         ]
         report = compute_score(findings)
         self.assertEqual(report.total_score, 35)  # 30 + 4.9 → round(34.9) = 35
@@ -159,12 +163,33 @@ class TestFormatScoreReport(unittest.TestCase):
     """Verify report formatting."""
 
     def test_report_contains_score(self):
-        findings = [MockFinding("ip-quality", "classification", "pass")]
+        findings = [MockFinding("ip-quality", "ip-not-proxy", "pass")]
         report = compute_score(findings)
         text = format_score_report(report)
         self.assertIn("CC-Check Score:", text)
-        self.assertIn("30", text)  # earned
+        self.assertIn("10", text)  # earned (ip-not-proxy = 10)
         self.assertIn("100", text)  # max
+
+    def test_blocker_shown_when_ip_flagged(self):
+        findings = [
+            MockFinding("ip-quality", "ip-not-proxy", "fail"),
+            MockFinding("ip-quality", "ip-not-hosting", "pass"),
+        ]
+        report = compute_score(findings)
+        self.assertTrue(report.blocked)
+        self.assertEqual(len(report.blocker_reasons), 1)
+        text = format_score_report(report)
+        self.assertIn("⛔ BLOCKED", text)
+
+    def test_no_blocker_when_all_pass(self):
+        findings = [
+            MockFinding("ip-quality", "ip-not-proxy", "pass"),
+            MockFinding("ip-quality", "ip-not-hosting", "pass"),
+        ]
+        report = compute_score(findings)
+        self.assertFalse(report.blocked)
+        text = format_score_report(report)
+        self.assertNotIn("BLOCKED", text)
 
     def test_report_contains_bars(self):
         findings = [MockFinding("dns", "dns-google", "pass")]

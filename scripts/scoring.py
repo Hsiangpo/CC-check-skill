@@ -18,7 +18,11 @@ from typing import Any
 # IP质量 30 > DNS 15 > System 21 > Network 10 > Clash 8 > Packages 6 > Privacy 6 > Node.js 2 > VPN 0 > Identity 1 > Claude 1
 WEIGHTS: dict[str, dict[str, int]] = {
     "ip-quality": {
-        "classification": 30,             # 最高优先级：IP 类型/风险/ISP 直接决定 API 风控结果
+        "ip-not-proxy": 10,               # 未被标记为 proxy/VPN
+        "ip-not-hosting": 8,              # 未被标记为 hosting/IDC
+        "ip-type-match": 5,               # 类型匹配 residential
+        "ip-risk-score": 4,               # 风险评分 < 33
+        "ip-geo-consistent": 3,           # IP geo 与 whois 国家一致
     },
     "dns": {
         "dns-google": 7,                  # Google DNS whoami 泄露中国 ISP 是最高风险
@@ -87,8 +91,11 @@ WEIGHTS: dict[str, dict[str, int]] = {
     },
 }
 # 总分验证:
-# ip(30) + dns(7+4+4=15) + sys(5+5+3+2+1+1+1+1+1+1=21) + net(5+3+2=10) + clash(2+1+2+2+1=8)
+# ip(10+8+5+4+3=30) + dns(7+4+4=15) + sys(5+5+3+2+1+1+1+1+1+1=21) + net(5+3+2=10) + clash(2+1+2+2+1=8)
 # + pkg(2+1+1+2=6) + priv(2+2+1+1=6) + node(1+1=2) + vpn(0) + id(1) + claude(1) = 100 ✓
+
+# Blocker items — if any of these fail, the environment is UNUSABLE regardless of score
+BLOCKERS: set[str] = {"ip-not-proxy", "ip-not-hosting"}
 
 
 @dataclass
@@ -106,6 +113,8 @@ class ScoreReport:
     percentage: float
     grade: str
     groups: list[GroupScore]
+    blocked: bool = False
+    blocker_reasons: list[str] | None = None
 
 
 def _get_weight(group: str, key: str) -> int:
@@ -116,6 +125,7 @@ def compute_score(findings: list[Any]) -> ScoreReport:
     """根据 findings 计算评分。"""
     group_earned: dict[str, float] = {}
     group_max: dict[str, int] = {}
+    blocker_reasons: list[str] = []
 
     for f in findings:
         w = _get_weight(f.group, f.key)
@@ -128,6 +138,9 @@ def compute_score(findings: list[Any]) -> ScoreReport:
             group_earned[f.group] = group_earned.get(f.group, 0) + w * 0.7
         elif f.status == "skip":
             group_earned[f.group] = group_earned.get(f.group, 0) + w * 0.5
+        # Check blockers
+        if f.key in BLOCKERS and f.status == "fail":
+            blocker_reasons.append(f"{f.key}: {f.summary}")
 
     # 满分始终为 100
     total_max = 100
@@ -142,12 +155,15 @@ def compute_score(findings: list[Any]) -> ScoreReport:
         groups.append(GroupScore(group=g, earned=earned, max_points=mx, percentage=pct))
 
     grade = _grade(percentage)
+    blocked = len(blocker_reasons) > 0
     return ScoreReport(
         total_score=round(total_earned),
         max_score=total_max,
         percentage=percentage,
         grade=grade,
         groups=groups,
+        blocked=blocked,
+        blocker_reasons=blocker_reasons if blocked else None,
     )
 
 
@@ -181,5 +197,11 @@ def format_score_report(report: ScoreReport) -> str:
         pct = f"{g.percentage:>5.1f}%"
         lines.append(f"║  {label} {score}  {bar}  {pct}  ║")
     lines.append("╚════════════════════════════════════════════╝")
+    if report.blocked:
+        lines.append("")
+        lines.append("⛔ BLOCKED — 环境不可用，必须先解决以下致命项：")
+        for reason in (report.blocker_reasons or []):
+            lines.append(f"   • {reason}")
+        lines.append("   分数仅供参考，解决 blocker 前请勿启动 Claude。")
     lines.append("")
     return "\n".join(lines)

@@ -54,7 +54,7 @@
 ## ⚡ 30 秒上手
 
 ```bash
-git clone https://github.com/Hsiangpo/CC-check.git && cd CC-check
+git clone https://github.com/Hsiangpo/CC-Envcheck-skill.git && cd CC-Envcheck-skill
 
 # 一行命令，完整闭环：审计 → 修复 → 验证
 python scripts/cc_check.py full

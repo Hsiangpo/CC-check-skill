@@ -317,12 +317,14 @@ def make_context(args: argparse.Namespace) -> Context:
     )
 
 
-def build_target_profile(ctx: Context, public_ip: str | None, ip_q: dict[str, Any] | None = None) -> dict[str, str | None]:
-    profile: dict[str, str | None] = {
+def build_target_profile(ctx: Context, public_ip: str | None, ip_q: dict[str, Any] | None = None) -> dict[str, Any]:
+    profile: dict[str, Any] = {
         "timezone": ctx.target_timezone,
         "locale": ctx.target_locale,
         "language": ctx.target_language,
         "proxy_url": ctx.proxy_url,
+        "locale_candidates": [ctx.target_locale] if ctx.target_locale else [],
+        "language_candidates": [ctx.target_language] if ctx.target_language else [],
     }
     if public_ip:
         q = ip_q or assess_ip_quality(public_ip, ctx.expected_ip_type)
@@ -332,6 +334,10 @@ def build_target_profile(ctx: Context, public_ip: str | None, ip_q: dict[str, An
             profile["locale"] = q.get("target_locale")
         if not profile["language"]:
             profile["language"] = q.get("target_language")
+        if not profile["locale_candidates"]:
+            profile["locale_candidates"] = q.get("target_locale_candidates", [])
+        if not profile["language_candidates"]:
+            profile["language_candidates"] = q.get("target_language_candidates", [])
     if not profile["proxy_url"]:
         configs = plat.get_clash_api_json("configs")
         if isinstance(configs, dict) and configs.get("mixed-port"):
@@ -424,11 +430,12 @@ def inspect_dns(public_ip: str | None) -> list[Finding]:
     return findings
 
 
-def inspect_system(ctx: Context, targets: dict[str, str | None]) -> list[Finding]:
+def inspect_system(ctx: Context, targets: dict[str, Any]) -> list[Finding]:
     findings: list[Finding] = []
     tz = targets.get("timezone")
     locale = targets.get("locale")
     proxy = targets.get("proxy_url")
+    locale_candidates = [item for item in targets.get("locale_candidates", []) if item]
 
     # Timezone
     if tz:
@@ -444,13 +451,15 @@ def inspect_system(ctx: Context, targets: dict[str, str | None]) -> list[Finding
 
     # Locale
     if locale:
-        lang_ok = os.environ.get("LANG") == locale
-        lc_ok = os.environ.get("LC_ALL") == locale
+        candidates = locale_candidates or [locale]
+        lang_ok = os.environ.get("LANG") in candidates
+        lc_value = os.environ.get("LC_ALL", "")
+        lc_ok = lc_value in candidates or lc_value == ""
         if lang_ok and lc_ok:
-            findings.append(Finding("system", "locale", "pass", f"Locale aligned: {locale}"))
+            findings.append(Finding("system", "locale", "pass", f"Locale aligned: {os.environ.get('LANG') or locale}"))
         else:
             findings.append(Finding("system", "locale", "fail", f"Locale not aligned to {locale}",
-                                    [f"LANG={os.environ.get('LANG', '')}", f"LC_ALL={os.environ.get('LC_ALL', '')}"]))
+                                    [f"expected one of: {', '.join(candidates)}", f"LANG={os.environ.get('LANG', '')}", f"LC_ALL={os.environ.get('LC_ALL', '')}"]))
     else:
         findings.append(Finding("system", "locale", "warn", "Target locale unknown"))
 
@@ -523,7 +532,7 @@ def inspect_system(ctx: Context, targets: dict[str, str | None]) -> list[Finding
     return findings
 
 
-def inspect_nodejs(targets: dict[str, str | None]) -> list[Finding]:
+def inspect_nodejs(targets: dict[str, Any]) -> list[Finding]:
     findings: list[Finding] = []
     node_env = plat.get_nodejs_env()
     tz = targets.get("timezone")
@@ -542,12 +551,20 @@ def inspect_nodejs(targets: dict[str, str | None]) -> list[Finding]:
         findings.append(Finding("nodejs", "node-tz", "pass", f"Node.js TZ: {node_tz}"))
 
     node_locale = node_env.get("locale", "")
-    expected_prefix = (targets.get("locale") or "").split(".")[0].replace("_", "-")
-    if expected_prefix and node_locale.startswith(expected_prefix.split("-")[0]):
+    locale_candidates = [str(item) for item in targets.get("locale_candidates", []) if item]
+    language_candidates = [str(item) for item in targets.get("language_candidates", []) if item]
+    expected_prefixes = [
+        candidate.split(".")[0].replace("_", "-")
+        for candidate in locale_candidates
+    ] + [
+        candidate.replace("_", "-")
+        for candidate in language_candidates
+    ]
+    if expected_prefixes and any(node_locale.startswith(prefix.split("-")[0]) for prefix in expected_prefixes):
         findings.append(Finding("nodejs", "node-locale", "pass", f"Node.js locale: {node_locale}"))
-    elif expected_prefix:
+    elif expected_prefixes:
         findings.append(Finding("nodejs", "node-locale", "fail",
-                                f"Node.js locale mismatch: {node_locale} vs expected {expected_prefix}"))
+                                f"Node.js locale mismatch: {node_locale} vs expected {', '.join(expected_prefixes)}"))
     else:
         findings.append(Finding("nodejs", "node-locale", "pass", f"Node.js locale: {node_locale}"))
     return findings

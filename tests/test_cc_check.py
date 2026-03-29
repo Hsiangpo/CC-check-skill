@@ -31,7 +31,6 @@ import browser_automation as bauto
 import browser_bootstrap as bboot
 import platform_ops as plat
 import vpn_adapter as vpnops
-import vpn_adapter as vpnops
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +275,11 @@ class TestIANAMapping(unittest.TestCase):
     def test_jp_mapping(self):
         locale, lang = IANA_TIMEZONE_TO_LOCALE["JP"]
         self.assertEqual(locale, "ja_JP.UTF-8")
+
+    def test_ng_mapping(self):
+        locale, lang = IANA_TIMEZONE_TO_LOCALE["NG"]
+        self.assertEqual(locale, "en_NG.UTF-8")
+        self.assertEqual(lang, "en_NG")
 
     def test_unknown_country_returns_none(self):
         result = IANA_TIMEZONE_TO_LOCALE.get("XX", (None, None))
@@ -845,6 +849,47 @@ class TestVpnAdapterBehavior(unittest.TestCase):
     def test_detect_root_requires_explicit_path_or_env(self):
         with tempfile.TemporaryDirectory() as tmpdir, patch.dict(os.environ, {}, clear=True), patch("vpn_adapter.Path.home", return_value=Path(tmpdir)):
             self.assertIsNone(vpnops.detect_root(None))
+
+
+class TestLocaleCandidateMatching(unittest.TestCase):
+    """验证 locale 候选可以覆盖更多国家。"""
+
+    def test_inspect_system_accepts_candidate_locale(self):
+        ctx = cc_check.Context(
+            skill_root=Path('/tmp/skill'),
+            home=Path('/tmp'),
+            claude_dir=Path('/tmp/.claude'),
+            clash_dir=None,
+            vpn_root=None,
+            public_subscription_url=None,
+            target_timezone=None,
+            target_locale=None,
+            target_language=None,
+            proxy_url=None,
+            expected_ip_type='residential',
+            dry_run=False,
+            allow_static_dns=False,
+            allow_dns_watchdog=False,
+            allow_shell_history_cleanup=False,
+            allow_rime_install=False,
+            allow_ime_removal=False,
+        )
+        with patch.dict(os.environ, {"LANG": "en_NG.UTF-8", "LC_ALL": ""}, clear=False), \
+             patch.object(plat, "get_locale_info", return_value=plat.LocaleInfo("en_NG.UTF-8", "", [], "", "", None, "")), \
+             patch.object(plat, "get_system_timezone", return_value="Africa/Lagos"), \
+             patch.object(plat, "get_hostname_info", return_value={"hostname": "demo"}), \
+             patch.object(plat, "get_active_input_methods", return_value=[]), \
+             patch.object(plat, "check_hosts_file", return_value=[]), \
+             patch.object(plat, "get_user_info", return_value={"username": "demo", "real_name": "Demo"}):
+            findings = cc_check.inspect_system(ctx, {
+                "timezone": "Africa/Lagos",
+                "locale": "en_NG.UTF-8",
+                "locale_candidates": ["en_NG.UTF-8"],
+                "proxy_url": None,
+            })
+
+        locale_finding = next(item for item in findings if item.key == "locale")
+        self.assertEqual(locale_finding.status, "pass")
 
 
 if __name__ == "__main__":

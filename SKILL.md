@@ -111,6 +111,7 @@ python3 <path>/scripts/browser_bootstrap.py install --dry-run
 # browser-leaks JSON includes browser_score when automation runs
 # browser_bootstrap status includes tools/proxy_env/install_commands/recommendations
 # automation success also emits artifact_path for the saved evidence file
+# country profiles now cover more regions, including Nigeria and other non-US targets
 
 # With overrides
 python3 <path>/scripts/cc_check.py inspect \

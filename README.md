@@ -101,6 +101,7 @@ python scripts/browser_bootstrap.py install --dry-run
 # browser_bootstrap.py status 会带 tools/proxy_env/install_commands/recommendations
 # 自动化成功时，browser-leaks JSON 还会带 artifact_path，指向本次证据文件
 # VPN 检查现在是显式启用：需要时传 --vpn-root
+# 国家策略已扩展到更多国家，包含尼日利亚、南非、阿联酋、巴西等常见节点地区
 
 # 自定义目标参数
 python scripts/cc_check.py inspect \
@@ -388,7 +389,7 @@ cc-check/
 ## 🧪 测试
 
 ```bash
-# 运行全部 86 个单元测试
+# 运行全部 88 个单元测试
 python -m unittest discover -s tests -v
 
 # CI: macOS + Linux + Windows × Python 3.10/3.11/3.12 = 9 矩阵

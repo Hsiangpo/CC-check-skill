@@ -14,6 +14,8 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from country_profiles import IANA_TIMEZONE_TO_LOCALE, resolve_country_profile
+
 GOOD_IP_TYPES = {"residential", "mobile", "isp"}
 BAD_IP_TYPES = {"hosting", "vpn", "proxy", "datacenter", "tor"}
 
@@ -23,20 +25,6 @@ US_RESIDENTIAL_ISPS = {
     "centurylink", "frontier", "windstream", "mediacom", "optimum",
     "charter", "altice", "suddenlink", "wow!", "rcn", "astound",
 }
-
-IANA_TIMEZONE_TO_LOCALE = {
-    "US": ("en_US.UTF-8", "en_US"),
-    "GB": ("en_GB.UTF-8", "en_GB"),
-    "CA": ("en_CA.UTF-8", "en_CA"),
-    "AU": ("en_AU.UTF-8", "en_AU"),
-    "DE": ("de_DE.UTF-8", "de_DE"),
-    "FR": ("fr_FR.UTF-8", "fr_FR"),
-    "JP": ("ja_JP.UTF-8", "ja_JP"),
-    "KR": ("ko_KR.UTF-8", "ko_KR"),
-    "SG": ("en_SG.UTF-8", "en_SG"),
-    "HK": ("en_HK.UTF-8", "en_HK"),
-}
-
 
 def fetch_json(url: str, timeout: int = 8) -> dict[str, Any] | None:
     try:
@@ -138,9 +126,12 @@ def assess_ip_quality(ip: str, expected_ip_type: str = "residential") -> dict[st
         isp_name = isp_name or ip_api.get("isp", "")
 
     # Derive locale from country
+    profile = resolve_country_profile(country_code)
     locale_pair = IANA_TIMEZONE_TO_LOCALE.get(country_code or "", (None, None))
     target_locale = locale_pair[0]
     target_language = locale_pair[1]
+    locale_candidates = list(profile.locales) if profile else ([target_locale] if target_locale else [])
+    language_candidates = list(profile.languages) if profile else ([target_language] if target_language else [])
 
     # Build details
     details: list[str] = []
@@ -299,6 +290,8 @@ def assess_ip_quality(ip: str, expected_ip_type: str = "residential") -> dict[st
         "target_timezone": timezone,
         "target_locale": target_locale,
         "target_language": target_language,
+        "target_locale_candidates": locale_candidates,
+        "target_language_candidates": language_candidates,
         "country": country,
         "country_code": country_code,
         "city": city,
@@ -306,4 +299,3 @@ def assess_ip_quality(ip: str, expected_ip_type: str = "residential") -> dict[st
         "risk_score": risk_score,
         "isp": isp_name,
     }
-

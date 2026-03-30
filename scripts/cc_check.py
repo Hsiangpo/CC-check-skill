@@ -627,7 +627,9 @@ def inspect_privacy(ctx: Context) -> list[Finding]:
 
     # Privacy env vars
     missing = [k for k in ("DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING",
-                            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+                            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+                            "CLAUDE_CODE_PROXY_RESOLVES_HOSTS",
+                            "DISABLE_INSTALLATION_CHECKS")
                if os.environ.get(k) != "1"]
     if missing:
         findings.append(Finding("privacy", "privacy-env", "fail", f"Missing: {', '.join(missing)}"))
@@ -883,6 +885,8 @@ def build_env_block(targets: dict[str, str | None]) -> str:
     add_env("DISABLE_TELEMETRY", "1")
     add_env("DISABLE_ERROR_REPORTING", "1")
     add_env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+    add_env("CLAUDE_CODE_PROXY_RESOLVES_HOSTS", "1")
+    add_env("DISABLE_INSTALLATION_CHECKS", "1")
     lines.append(ENV_BLOCK_END)
     return "\n".join(lines)
 
